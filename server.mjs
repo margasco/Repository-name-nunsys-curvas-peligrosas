@@ -10,9 +10,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
-app.get(["/", "/join", "/presenter"], (_req, res) => {
+// Rutas “bonitas” para que /join y /presenter carguen la misma app
+app.get(["/join", "/presenter"], (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
@@ -23,7 +24,7 @@ const io = new Server(httpServer);
 const state = {
   q1: new Map(),
   q2: new Map(),
-  canonEmbeddings: new Map()
+  canonEmbeddings: new Map(),
 };
 
 function resetAll() {
@@ -41,14 +42,14 @@ function mapToArray(map) {
 function emitState() {
   io.emit("state:update", {
     q1: mapToArray(state.q1),
-    q2: mapToArray(state.q2)
+    q2: mapToArray(state.q2),
   });
 }
 
 // ===== NORMALIZACIÓN DE TEXTO (ANTES DE IA) =====
 const STOP = new Set([
-  "de","la","el","los","las","un","una","y","o","a","en","para","por","con",
-  "del","al","que","me","mi","mis","tu","tus","su","sus","hacer","realizar"
+  "de", "la", "el", "los", "las", "un", "una", "y", "o", "a", "en", "para", "por", "con",
+  "del", "al", "que", "me", "mi", "mis", "tu", "tus", "su", "sus", "hacer", "realizar",
 ]);
 
 const SYN = [
@@ -56,7 +57,7 @@ const SYN = [
   { re: /\b(outlook)\b/g, to: "correo" },
   { re: /\b(reuniones?)\b/g, to: "reunion" },
   { re: /\b(informes?)\b/g, to: "informe" },
-  { re: /\b(reportes?)\b/g, to: "informe" }
+  { re: /\b(reportes?)\b/g, to: "informe" },
 ];
 
 function normalizeText(input) {
@@ -65,7 +66,7 @@ function normalizeText(input) {
   s = s.replace(/[^\p{Letter}\p{Number}\s]/gu, " ");
   s = s.replace(/\s+/g, " ").trim();
   for (const { re, to } of SYN) s = s.replace(re, to);
-  const tokens = s.split(" ").filter(t => t && !STOP.has(t));
+  const tokens = s.split(" ").filter((t) => t && !STOP.has(t));
   return tokens.join(" ").trim();
 }
 
@@ -129,7 +130,7 @@ async function canonicalize(userText, threshold = 0.78) {
 io.on("connection", (socket) => {
   socket.emit("state:update", {
     q1: mapToArray(state.q1),
-    q2: mapToArray(state.q2)
+    q2: mapToArray(state.q2),
   });
 
   socket.on("admin:reset", () => {
@@ -155,7 +156,4 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-getEmbedder().catch(() => {});
-httpServer.listen(PORT, () =>
-  console.log("Servidor activo en puerto", PORT)
-);
+httpServer.listen(PORT, () => console.log("Servidor activo en puerto", PORT));
