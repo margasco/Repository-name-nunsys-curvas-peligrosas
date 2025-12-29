@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
   const view = document.body.dataset.view; // "join" o "presenter"
 
-  // ===== Util: render nube “tipo mentimeter simple” =====
+  // ===== Util: render nube =====
   function renderCloud(container, items) {
     if (!container) return;
     container.innerHTML = "";
@@ -17,11 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const max = Math.max(...items.map(i => i.count));
     const min = Math.min(...items.map(i => i.count));
-
-    const scale = (c) => {
-      if (max === min) return 34;
-      return 16 + ((c - min) / (max - min)) * 40; // 16..56
-    };
+    const scale = (c) => (max === min ? 34 : 16 + ((c - min) / (max - min)) * 40);
 
     items.forEach(({ text, count }) => {
       const span = document.createElement("span");
@@ -38,22 +34,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const joinUrlText = document.getElementById("joinUrlText");
     if (joinUrlText) joinUrlText.textContent = joinUrl;
 
-    // QR
     const qrCanvas = document.getElementById("qrCanvas");
     if (window.QRious && qrCanvas) {
-      // QRious pinta sobre canvas
-      new QRious({
-        element: qrCanvas,
-        value: joinUrl,
-        size: 260,
-      });
+      new QRious({ element: qrCanvas, value: joinUrl, size: 260 });
     }
 
-    // Reset
     const resetBtn = document.getElementById("resetBtn");
     resetBtn?.addEventListener("click", () => socket.emit("admin:reset"));
 
-    // Nubes
     const cloud1 = document.getElementById("cloud1");
     const cloud2 = document.getElementById("cloud2");
 
@@ -110,10 +98,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     q1Send?.addEventListener("click", () => {
-      // si hay algo escrito y no le dio a Añadir, lo metemos
       const v = (q1Input.value || "").trim();
       if (v) q1Items.push(v);
-
       if (q1Items.length === 0) return;
 
       socket.emit("q1:submit", { items: q1Items });
@@ -125,7 +111,6 @@ document.addEventListener("DOMContentLoaded", () => {
     q2Send?.addEventListener("click", () => {
       const v = (q2Input.value || "").trim();
       if (!v) return;
-
       socket.emit("q2:submit", { item: v });
       q2Input.value = "";
     });
