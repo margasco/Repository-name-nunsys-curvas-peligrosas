@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Detectando Curvas Peligrosas</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <main class="main">
+      <div class="top">
+        <div class="title">DETECTANDO CURVAS PELIGROSAS</div>
+        <div class="mode" id="modeBadge"></div>
+        <div class="spacer"></div>
+        <button class="btn secondary" id="resetBtn" style="display:none;">RESET (nuevo grupo)</button>
+      </div>
+
+      <!-- PARTICIPANTE: PREGUNTA 1 -->
+      <section class="card" id="joinQ1">
+        <h2>¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
+        <p>Añade una o varias tareas (texto libre). La IA agrupará variantes similares.</p>
+
+        <div class="row">
+          <input id="q1Input" class="input" placeholder="Ej. responder correos, preparar informes, reuniones..." />
+          <button id="q1Add" class="btn secondary">Añadir</button>
+          <button id="q1Send" class="btn" disabled>Enviar</button>
+        </div>
+
+        <div class="chips" id="q1Chips"></div>
+      </section>
+
+      <!-- PARTICIPANTE: PREGUNTA 2 -->
+      <section class="card" id="joinQ2">
+        <h2>¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?</h2>
+        <p>Solo una (texto libre).</p>
+
+        <div class="row">
+          <input id="q2Input" class="input" placeholder="Ej. seguimiento de incidencias..." />
+          <button id="q2Send" class="btn" disabled>Enviar</button>
+        </div>
+        <div class="note" id="sentNote" style="display:none;">✅ Enviado</div>
+      </section>
+
+      <!-- MODERADOR: DOS NUBES -->
+      <section class="grid2" id="presenterGrid" style="display:none;">
+        <div class="card">
+          <h2>¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
+          <p>Word cloud en tiempo real (agrupada por IA).</p>
+          <div class="cloudBox"><div id="cloud1"></div></div>
+          <div class="note" id="top1"></div>
+        </div>
+        <div class="card">
+          <h2>¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?</h2>
+          <p>Word cloud en tiempo real.</p>
+          <div class="cloudBox"><div id="cloud2"></div></div>
+          <div class="note" id="top2"></div>
+        </div>
+      </section>
+
+      <div class="footerNote" id="footerNote"></div>
+    </main>
+
+    <!-- FRANJA DERECHA ANIMADA (TRACK) -->
+    <aside class="strip">
+      <svg viewBox="0 0 260 900" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id=
