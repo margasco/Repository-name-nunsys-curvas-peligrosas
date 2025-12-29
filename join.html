@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DETECTANDO CURVAS PELIGROSAS · Join</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body data-view="join">
+  <div class="wrap">
+    <header class="top">
+      <h1>DETECTANDO CURVAS PELIGROSAS</h1>
+      <span class="pill">ALUMNOS</span>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <h2>¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
+        <p>Añade una o varias tareas (texto libre). La IA agrupará variantes similares.</p>
+
+        <div class="row">
+          <input id="q1Input" placeholder="Ej: responder correos, preparar informes, reuniones..." />
+          <button id="q1Add" class="btn ghost" type="button">Añadir</button>
+          <button id="q1Send" class="btn" type="button">Enviar</button>
+        </div>
+
+        <div id="q1Chips" class="chips"></div>
+      </section>
+
+      <section class="card">
+        <h2>¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?</h2>
+        <p>Solo una (texto libre).</p>
+
+        <div class="row">
+          <input id="q2Input" placeholder="Ej: seguimiento de incidencias..." />
+          <button id="q2Send" class="btn" type="button">Enviar</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
