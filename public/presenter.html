@@ -13,35 +13,53 @@
     <div class="presenter-main">
       <header class="top">
         <h1>DETECTANDO CURVAS PELIGROSAS</h1>
+
         <div class="top-right">
+          <div class="segmented" role="tablist" aria-label="Vistas">
+            <button id="viewCompare" class="seg on" type="button">Comparar</button>
+            <button id="viewQ1" class="seg" type="button">Ver Q1</button>
+            <button id="viewQ2" class="seg" type="button">Ver Q2</button>
+          </div>
+
           <button id="resetBtn" class="btn danger" type="button">RESET</button>
           <span class="pill">MODERADOR</span>
         </div>
       </header>
 
-      <section class="presenter-grid">
-        <div class="card">
+      <section class="presenter-grid" id="presenterGrid">
+        <div class="card card-qr" id="cardQR">
           <h2>QR para participar</h2>
           <p>Escanea para entrar en <strong>/join</strong>.</p>
-          <canvas id="qrCanvas" width="220" height="220"></canvas>
+
+          <div class="qrBox">
+            <canvas id="qrCanvas" width="240" height="240"></canvas>
+          </div>
+
           <div class="muted" id="joinUrl"></div>
+          <div class="muted tiny" id="qrHint"></div>
         </div>
 
-        <div class="card">
-          <h2>Nube · Tareas que consumen más tiempo</h2>
+        <div class="card cloudCard" id="cardQ1" data-cloud="q1">
+          <div class="cardHead">
+            <h2>Nube · Tareas que consumen más tiempo</h2>
+            <button class="btn ghost mini zoomBtn" type="button" data-zoom="q1">Zoom</button>
+          </div>
           <div id="cloudQ1" class="cloud"></div>
         </div>
 
-        <div class="card">
-          <h2>Nube · Tarea que menos gusta</h2>
+        <div class="card cloudCard" id="cardQ2" data-cloud="q2">
+          <div class="cardHead">
+            <h2>Nube · Tarea que menos gusta</h2>
+            <button class="btn ghost mini zoomBtn" type="button" data-zoom="q2">Zoom</button>
+          </div>
           <div id="cloudQ2" class="cloud"></div>
         </div>
       </section>
     </div>
 
-    <aside class="track">
+    <aside class="track" aria-hidden="true">
       <div class="track-inner"></div>
-      <div class="track-label">CURVAS</div>
+      <div class="track-label">rAIcers</div>
     </aside>
   </div>
 
