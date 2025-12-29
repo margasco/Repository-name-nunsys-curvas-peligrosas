@@ -13,9 +13,18 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 // Rutas “bonitas” para que /join y /presenter carguen la misma app
-app.get(["/join", "/presenter"], (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+app.get("/", (_req, res) => {
+  res.redirect("/join");
 });
+
+app.get("/join", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "join.html"));
+});
+
+app.get("/presenter", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "presenter.html"));
+});
+
 
 const httpServer = createServer(app);
 const io = new Server(httpServer);
