@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DETECTANDO CURVAS PELIGROSAS · Presenter</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body data-view="presenter">
+  <div class="wrap presenter">
+    <header class="top presenterTop">
+      <div>
+        <h1>DETECTANDO CURVAS PELIGROSAS</h1>
+        <p class="sub">Escanea el QR o entra en: <span class="mono" id="joinUrlText"></span></p>
+      </div>
+
+      <div class="presenterActions">
+        <button id="resetBtn" class="btn danger" type="button">Reset (nuevo grupo)</button>
+      </div>
+    </header>
+
+    <main class="presenterLayout">
+      <section class="card presenterQr">
+        <h2>QR para alumnos</h2>
+        <canvas id="qrCanvas" width="260" height="260"></canvas>
+      </section>
+
+      <section class="card">
+        <h2>¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
+        <div id="cloud1" class="cloud"></div>
+      </section>
+
+      <section class="card">
+        <h2>¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?</h2>
+        <div id="cloud2" class="cloud"></div>
+      </section>
+    </main>
+
+    <!-- Franja derecha animada -->
+    <aside class="raceStrip" aria-hidden="true">
+      <div class="raceTitle">CURVAS</div>
+      <svg class="raceSvg" viewBox="0 0 200 900" preserveAspectRatio="none">
+        <path class="track" d="M40,40 C160,120 20,220 160,320 C20,420 160,520 40,620 C160,720 40,820 160,860" />
+        <circle class="dot" cx="40" cy="40" r="10"></circle>
+      </svg>
+    </aside>
+  </div>
+
+  <!-- QR library (CDN, no instalar nada) -->
+  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
