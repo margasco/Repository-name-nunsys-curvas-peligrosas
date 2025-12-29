@@ -11,47 +11,28 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// Sirve TODO lo que haya dentro de /public (css, js, html, etc.)
-app.use(express.static(path.join(__dirname, "public"), {
-  setHeaders: (res, filePath) => {
-    // Forzamos el tipo correcto para que el navegador NO “descargue” el HTML
-    if (filePath.endsWith(".html")) {
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader("Content-Disposition", "inline");
-    }
-  }
-}));
+// ✅ RUTAS primero (evita conflictos con archivos estáticos tipo "presenter" sin extensión)
+app.get("/", (_req, res) => res.redirect("/join"));
 
-// Al entrar en la URL base, llevamos a /join (alumnos)
-app.get("/", (_req, res) => {
-  res.redirect("/join");
-});
-
-// Vista alumnos (2 encuestas)
 app.get("/join", (_req, res) => {
-  res.type("html");
   res.sendFile(path.join(__dirname, "public", "join.html"));
 });
 
-// Vista moderador (QR + nubes + franja animada)
 app.get("/presenter", (_req, res) => {
-  res.type("html");
   res.sendFile(path.join(__dirname, "public", "presenter.html"));
 });
 
-// Si alguien entra a cualquier otra ruta, lo llevamos a /join
-app.get("*", (_req, res) => {
-  res.redirect("/join");
-});
+// ✅ estáticos DESPUÉS
+app.use(express.static(path.join(__dirname, "public")));
 
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
 // ===== ESTADO DE LA APP (se borra con RESET) =====
 const state = {
-  q1: new Map(),
+  q1: new Map(), // canon -> count
   q2: new Map(),
-  canonEmbeddings: new Map(),
+  canonEmbeddings: new Map(), // canon -> embedding
 };
 
 function resetAll() {
@@ -76,15 +57,16 @@ function emitState() {
 // ===== NORMALIZACIÓN DE TEXTO (ANTES DE IA) =====
 const STOP = new Set([
   "de","la","el","los","las","un","una","y","o","a","en","para","por","con",
-  "del","al","que","me","mi","mis","tu","tus","su","sus","hacer","realizar"
+  "del","al","que","me","mi","mis","tu","tus","su","sus","hacer","realizar",
+  "tener","gestionar","llevar"
 ]);
 
 const SYN = [
-  { re: /\b(e-?mails?|emails?)\b/g, to: "correo" },
+  { re: /\b(e-?mails?|emails?|correo?s?)\b/g, to: "correo" },
   { re: /\b(outlook)\b/g, to: "correo" },
   { re: /\b(reuniones?)\b/g, to: "reunion" },
-  { re: /\b(informes?)\b/g, to: "informe" },
-  { re: /\b(reportes?)\b/g, to: "informe" },
+  { re: /\b(informes?|reportes?)\b/g, to: "informe" },
+  { re: /\b(llamadas?)\b/g, to: "llamada" },
 ];
 
 function normalizeText(input) {
@@ -93,7 +75,7 @@ function normalizeText(input) {
   s = s.replace(/[^\p{Letter}\p{Number}\s]/gu, " ");
   s = s.replace(/\s+/g, " ").trim();
   for (const { re, to } of SYN) s = s.replace(re, to);
-  const tokens = s.split(" ").filter((t) => t && !STOP.has(t));
+  const tokens = s.split(" ").filter(t => t && !STOP.has(t));
   return tokens.join(" ").trim();
 }
 
@@ -129,17 +111,21 @@ async function embed(text) {
 async function canonicalize(userText, threshold = 0.78) {
   const norm = normalizeText(userText);
   if (!norm) return null;
+
+  // Si ya existe exacto, devolvemos
   if (state.canonEmbeddings.has(norm)) return norm;
 
   let v;
   try {
     v = await embed(norm);
   } catch {
+    // fallback sin IA
     return norm;
   }
 
   let bestCanon = null;
   let bestScore = -1;
+
   for (const [canon, vec] of state.canonEmbeddings.entries()) {
     const score = cosine(v, vec);
     if (score > bestScore) {
@@ -149,6 +135,7 @@ async function canonicalize(userText, threshold = 0.78) {
   }
 
   if (bestCanon && bestScore >= threshold) return bestCanon;
+
   state.canonEmbeddings.set(norm, v);
   return norm;
 }
