@@ -10,21 +10,39 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
 
-// Rutas “bonitas” para que /join y /presenter carguen la misma app
+// Sirve TODO lo que haya dentro de /public (css, js, html, etc.)
+app.use(express.static(path.join(__dirname, "public"), {
+  setHeaders: (res, filePath) => {
+    // Forzamos el tipo correcto para que el navegador NO “descargue” el HTML
+    if (filePath.endsWith(".html")) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Content-Disposition", "inline");
+    }
+  }
+}));
+
+// Al entrar en la URL base, llevamos a /join (alumnos)
 app.get("/", (_req, res) => {
   res.redirect("/join");
 });
 
+// Vista alumnos (2 encuestas)
 app.get("/join", (_req, res) => {
+  res.type("html");
   res.sendFile(path.join(__dirname, "public", "join.html"));
 });
 
+// Vista moderador (QR + nubes + franja animada)
 app.get("/presenter", (_req, res) => {
+  res.type("html");
   res.sendFile(path.join(__dirname, "public", "presenter.html"));
 });
 
+// Si alguien entra a cualquier otra ruta, lo llevamos a /join
+app.get("*", (_req, res) => {
+  res.redirect("/join");
+});
 
 const httpServer = createServer(app);
 const io = new Server(httpServer);
@@ -57,8 +75,8 @@ function emitState() {
 
 // ===== NORMALIZACIÓN DE TEXTO (ANTES DE IA) =====
 const STOP = new Set([
-  "de", "la", "el", "los", "las", "un", "una", "y", "o", "a", "en", "para", "por", "con",
-  "del", "al", "que", "me", "mi", "mis", "tu", "tus", "su", "sus", "hacer", "realizar",
+  "de","la","el","los","las","un","una","y","o","a","en","para","por","con",
+  "del","al","que","me","mi","mis","tu","tus","su","sus","hacer","realizar"
 ]);
 
 const SYN = [
