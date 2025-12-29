@@ -1,186 +1,133 @@
-const socket = io();
+document.addEventListener("DOMContentLoaded", () => {
+  const socket = io();
+  const view = document.body.dataset.view; // "join" o "presenter"
 
-const path = window.location.pathname;
-const isPresenter = path.includes("presenter");
+  // ===== Util: render nube “tipo mentimeter simple” =====
+  function renderCloud(container, items) {
+    if (!container) return;
+    container.innerHTML = "";
 
-document.getElementById("modeBadge").textContent = isPresenter ? "Moderador" : "Participante";
+    if (!items || items.length === 0) {
+      const empty = document.createElement("div");
+      empty.style.color = "#888";
+      empty.textContent = "Aún no hay respuestas…";
+      container.appendChild(empty);
+      return;
+    }
 
-const resetBtn = document.getElementById("resetBtn");
+    const max = Math.max(...items.map(i => i.count));
+    const min = Math.min(...items.map(i => i.count));
 
-if (isPresenter) {
-  resetBtn.style.display = "inline-flex";
-  document.getElementById("presenterGrid").style.display = "grid";
-  document.getElementById("joinQ1").style.display = "none";
-  document.getElementById("joinQ2").style.display = "none";
-  document.getElementById("footerNote").innerHTML =
-    `QR recomendado: <b>${window.location.origin}/join</b> · Proyector: <b>${window.location.origin}/presenter</b>`;
-  resetBtn.onclick = () => socket.emit("admin:reset");
-} else {
-  document.getElementById("footerNote").textContent =
-    "Tip: puedes enviar varias tareas en la primera pregunta. En la segunda, solo una.";
-}
-
-// ===== PARTICIPANTE: PREGUNTA 1 (múltiple) =====
-const q1Input = document.getElementById("q1Input");
-const q1Add = document.getElementById("q1Add");
-const q1Send = document.getElementById("q1Send");
-const q1Chips = document.getElementById("q1Chips");
-
-let q1Items = [];
-
-function renderQ1() {
-  q1Chips.innerHTML = "";
-  q1Items.forEach((t, idx) => {
-    const chip = document.createElement("div");
-    chip.className = "chip";
-    chip.textContent = t;
-
-    const x = document.createElement("button");
-    x.textContent = "×";
-    x.onclick = () => {
-      q1Items = q1Items.filter((_, i) => i !== idx);
-      renderQ1();
+    const scale = (c) => {
+      if (max === min) return 34;
+      return 16 + ((c - min) / (max - min)) * 40; // 16..56
     };
 
-    chip.appendChild(x);
-    q1Chips.appendChild(chip);
-  });
-
-  q1Send.disabled = q1Items.length === 0;
-}
-
-if (q1Add) {
-  q1Add.onclick = () => {
-    const v = q1Input.value.trim();
-    if (!v) return;
-    q1Items.push(v);
-    q1Input.value = "";
-    renderQ1();
-  };
-
-  q1Input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      q1Add.click();
-    }
-  });
-
-  q1Send.onclick = () => {
-    socket.emit("q1:submit", { items: q1Items });
-    q1Items = [];
-    renderQ1();
-    flashSent();
-  };
-}
-
-// ===== PARTICIPANTE: PREGUNTA 2 (única) =====
-const q2Input = document.getElementById("q2Input");
-const q2Send = document.getElementById("q2Send");
-
-if (q2Input) {
-  q2Input.addEventListener("input", () => {
-    q2Send.disabled = q2Input.value.trim().length < 2;
-  });
-
-  q2Input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      q2Send.click();
-    }
-  });
-
-  q2Send.onclick = () => {
-    socket.emit("q2:submit", { item: q2Input.value.trim() });
-    q2Input.value = "";
-    q2Send.disabled = true;
-    flashSent();
-  };
-}
-
-function flashSent() {
-  const n = document.getElementById("sentNote");
-  if (!n) return;
-  n.style.display = "block";
-  setTimeout(() => (n.style.display = "none"), 1200);
-}
-
-// ===== MODERADOR: WORD CLOUD =====
-function drawCloud(containerId, data) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-
-  const width = el.parentElement.clientWidth;
-  const height = el.parentElement.clientHeight;
-
-  el.innerHTML = "";
-  const svg = d3
-    .select(el)
-    .append("svg")
-    .attr("width", width)
-    .attr("height", height);
-
-  const words = (data || []).slice(0, 60).map((d) => ({
-    text: d.text,
-    size: 12 + Math.min(60, d.count * 10),
-  }));
-
-  if (words.length === 0) {
-    svg
-      .append("text")
-      .attr("x", width / 2)
-      .attr("y", height / 2)
-      .attr("text-anchor", "middle")
-      .attr("fill", "#6b7280")
-      .style("font-size", "14px")
-      .text("Esperando respuestas…");
-    return;
+    items.forEach(({ text, count }) => {
+      const span = document.createElement("span");
+      span.textContent = text;
+      span.style.fontSize = `${scale(count)}px`;
+      container.appendChild(span);
+    });
   }
 
-  d3.layout
-    .cloud()
-    .size([width, height])
-    .words(words)
-    .padding(2)
-    .rotate(() => 0)
-    .font("system-ui")
-    .fontSize((d) => d.size)
-    .on("end", (layoutWords) => {
-      svg
-        .append("g")
-        .attr("transform", `translate(${width / 2},${height / 2})`)
-        .selectAll("text")
-        .data(layoutWords)
-        .enter()
-        .append("text")
-        .style("font-family", "system-ui")
-        .style("font-size", (d) => `${d.size}px`)
-        .style("fill", "#111827")
-        .style("opacity", 0.92)
-        .attr("text-anchor", "middle")
-        .attr("transform", (d) => `translate(${d.x},${d.y})rotate(${d.rotate})`)
-        .text((d) => d.text);
-    })
-    .start();
-}
+  // ===== PRESENTER =====
+  if (view === "presenter") {
+    const joinUrl = `${location.origin}/join`;
 
-socket.on("state:update", (s) => {
-  if (!isPresenter) return;
+    const joinUrlText = document.getElementById("joinUrlText");
+    if (joinUrlText) joinUrlText.textContent = joinUrl;
 
-  drawCloud("cloud1", s.q1 || []);
-  drawCloud("cloud2", s.q2 || []);
+    // QR
+    const qrCanvas = document.getElementById("qrCanvas");
+    if (window.QRious && qrCanvas) {
+      // QRious pinta sobre canvas
+      new QRious({
+        element: qrCanvas,
+        value: joinUrl,
+        size: 260,
+      });
+    }
 
-  const top1 =
-    (s.q1 || [])
-      .slice(0, 5)
-      .map((x) => `${x.text} (${x.count})`)
-      .join(" · ") || "—";
+    // Reset
+    const resetBtn = document.getElementById("resetBtn");
+    resetBtn?.addEventListener("click", () => socket.emit("admin:reset"));
 
-  const top2 =
-    (s.q2 || [])
-      .slice(0, 5)
-      .map((x) => `${x.text} (${x.count})`)
-      .join(" · ") || "—";
+    // Nubes
+    const cloud1 = document.getElementById("cloud1");
+    const cloud2 = document.getElementById("cloud2");
 
-  document.getElementById("top1").textContent = "Top: " + top1;
-  document.getElementById("top2").textContent = "Top: " + top2;
+    socket.on("state:update", (state) => {
+      renderCloud(cloud1, state.q1);
+      renderCloud(cloud2, state.q2);
+    });
+  }
+
+  // ===== JOIN =====
+  if (view === "join") {
+    const q1Input = document.getElementById("q1Input");
+    const q1Add = document.getElementById("q1Add");
+    const q1Send = document.getElementById("q1Send");
+    const q1Chips = document.getElementById("q1Chips");
+
+    const q2Input = document.getElementById("q2Input");
+    const q2Send = document.getElementById("q2Send");
+
+    let q1Items = [];
+
+    function redrawChips() {
+      q1Chips.innerHTML = "";
+      q1Items.forEach((t, idx) => {
+        const chip = document.createElement("div");
+        chip.className = "chip";
+        chip.textContent = t;
+
+        const x = document.createElement("button");
+        x.className = "chipX";
+        x.type = "button";
+        x.textContent = "×";
+        x.addEventListener("click", () => {
+          q1Items.splice(idx, 1);
+          redrawChips();
+        });
+
+        chip.appendChild(x);
+        q1Chips.appendChild(chip);
+      });
+    }
+
+    function addQ1() {
+      const v = (q1Input.value || "").trim();
+      if (!v) return;
+      q1Items.push(v);
+      q1Input.value = "";
+      redrawChips();
+    }
+
+    q1Add?.addEventListener("click", addQ1);
+    q1Input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addQ1();
+    });
+
+    q1Send?.addEventListener("click", () => {
+      // si hay algo escrito y no le dio a Añadir, lo metemos
+      const v = (q1Input.value || "").trim();
+      if (v) q1Items.push(v);
+
+      if (q1Items.length === 0) return;
+
+      socket.emit("q1:submit", { items: q1Items });
+      q1Items = [];
+      q1Input.value = "";
+      redrawChips();
+    });
+
+    q2Send?.addEventListener("click", () => {
+      const v = (q2Input.value || "").trim();
+      if (!v) return;
+
+      socket.emit("q2:submit", { item: v });
+      q2Input.value = "";
+    });
+  }
 });
