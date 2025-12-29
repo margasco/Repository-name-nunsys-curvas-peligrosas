@@ -1,14 +1,19 @@
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { pipeline } from "@xenova/transformers";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
 app.get(["/", "/join", "/presenter"], (_req, res) => {
-  res.sendFile(new URL("./public/index.html", import.meta.url));
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 const httpServer = createServer(app);
