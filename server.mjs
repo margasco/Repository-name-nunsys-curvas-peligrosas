@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(express.json());
 
 // ✅ RUTAS primero (evita conflictos con estáticos)
@@ -24,6 +25,9 @@ app.get("/join", (_req, res) => {
 app.get("/presenter", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "presenter.html"));
 });
+
+// ✅ Healthcheck (útil en Render)
+app.get("/health", (_req, res) => res.status(200).send("ok"));
 
 // ✅ QR server-side (sin CDN)
 app.get("/qr", async (req, res) => {
@@ -52,17 +56,29 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const httpServer = createServer(app);
 
-// ✅ Socket.IO robusto en Render
+// ✅ Ajustes keep-alive (Render/proxies)
+httpServer.keepAliveTimeout = 65_000;
+httpServer.headersTimeout = 66_000;
+
+// =========================
+// Socket.IO (más estable)
+// =========================
 const io = new Server(httpServer, {
   transports: ["websocket", "polling"],
-  cors: {
-    origin: true,
-    methods: ["GET", "POST"],
-  },
+  cors: { origin: true, methods: ["GET", "POST"] },
+
+  // engine.io ping settings (reduce desconexiones por micro-freezes)
+  pingInterval: 25_000,
+  pingTimeout: 25_000,
+
+  // evita payloads gigantes
+  maxHttpBufferSize: 1e6,
 });
 
 // =======================================================
-// ✅ PERSISTENCIA (evita “desaparece sola” si Render reinicia)
+// ✅ PERSISTENCIA (mejora “desaparece” si hay reinicio suave)
+// OJO: si Render reinicia contenedor, el FS puede ser efímero.
+// Aun así ayuda para caídas/restarts no destructivos.
 // =======================================================
 const STATE_FILE = path.join(__dirname, "state.json");
 let saveTimer = null;
@@ -122,16 +138,18 @@ async function loadState() {
 
 // =======================================================
 // ===== ESTADO DE LA APP =====
-// - q1/q2 guardan la CLAVE CANÓNICA -> count
-// - q1Label/q2Label guardan el TEXTO del primer usuario (lo que tú pediste)
+// - q1/q2 guardan CLAVE CANÓNICA -> count
+// - q1Label/q2Label guardan el TEXTO del primer usuario (lo que se muestra)
 // =======================================================
 const state = {
-  q1: new Map(),             // canonKey -> count
-  q2: new Map(),             // canonKey -> count
-  q1Label: new Map(),        // canonKey -> primer texto visto (para mostrar)
-  q2Label: new Map(),        // canonKey -> primer texto visto (para mostrar)
-  canonEmbeddings: new Map() // canonKey -> embedding(Float32Array)
+  q1: new Map(),
+  q2: new Map(),
+  q1Label: new Map(),
+  q2Label: new Map(),
+  canonEmbeddings: new Map(), // opcional
 };
+
+let stateVersion = 0;
 
 function resetAll() {
   state.q1.clear();
@@ -151,8 +169,14 @@ function mapToArray(map, labelMap) {
     .sort((a, b) => b.count - a.count);
 }
 
-function emitState() {
+function emitState(metaExtra = {}) {
+  stateVersion += 1;
   const payload = {
+    meta: {
+      version: stateVersion,
+      ts: Date.now(),
+      ...metaExtra,
+    },
     q1: mapToArray(state.q1, state.q1Label),
     q2: mapToArray(state.q2, state.q2Label),
   };
@@ -160,29 +184,26 @@ function emitState() {
 }
 
 // =======================================================
-// ===== NORMALIZACIÓN (clave para “agrupar tareas similares”) =====
-// Objetivo: convertir frases distintas a un "concepto" común.
-//
-// Ej:
-//  - "responder correos" -> "correo"
-//  - "redactar mails"    -> "correo"
-//  - "hacer informes"    -> "informe"
+// ===== NORMALIZACIÓN + REGLAS (AGRUPACIÓN REAL) =====
+// Prioridad: estabilidad + agrupación fiable.
 // =======================================================
 const STOP = new Set([
   // conectores / pronombres
   "de","la","el","los","las","un","una","y","o","a","en","para","por","con",
   "del","al","que","me","mi","mis","tu","tus","su","sus",
 
-  // verbos muy comunes (los quitamos para quedarnos con el concepto)
+  // verbos muy comunes (nos quedamos con el concepto)
   "hacer","realizar","tener","gestionar","llevar",
   "responder","contestar","redactar","escribir","enviar","leer","revisar",
   "preparar","crear","rellenar","completar","tramitar","procesar","organizar",
   "coordinar","planificar","agendar","programar","buscar","actualizar",
-  "solucionar","resolver","atender","seguir","seguimiento"
+  "solucionar","resolver","atender","seguir","seguimiento",
+  "pasar","sacar","generar","montar","armar","revisar","validar","definir"
 ]);
 
+// Sustituciones “claras”
 const SYN = [
-  // email/correo
+  // emails/correos
   { re: /\b(e-?mails?|emails?|mail(?:es)?|correo(?:s)?|correos? electronicos?)\b/g, to: "correo" },
   { re: /\b(outlook)\b/g, to: "correo" },
 
@@ -192,50 +213,80 @@ const SYN = [
   // informes/reportes
   { re: /\b(informes?|reportes?)\b/g, to: "informe" },
 
-  // llamadas
-  { re: /\b(llamadas?)\b/g, to: "llamada" },
+  // actas/minutas
+  { re: /\b(actas?|minutas?)\b/g, to: "acta" },
 
-  // incidencias
-  { re: /\b(incidencias?)\b/g, to: "incidencia" },
+  // propuestas / ofertas / presupuestos / cotizaciones
+  { re: /\b(propuestas?|ofertas?|presupuestos?|cotizaciones?)\b/g, to: "propuesta" },
 
-  // facturas / facturación (si lo usan)
-  { re: /\b(facturacion|facturas?)\b/g, to: "factura" },
+  // requisitos
+  { re: /\b(requisitos?)\b/g, to: "requisito" },
 
-  // tickets (si alguien lo usa)
-  { re: /\b(tickets?)\b/g, to: "ticket" },
+  // técnico(s)
+  { re: /\b(tecnicos?|tecnicas?)\b/g, to: "tecnico" },
 ];
 
-function normalizeConcept(input) {
+function normalizeBase(input) {
   let s = (input || "").trim().toLowerCase();
   s = s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
   s = s.replace(/[^\p{Letter}\p{Number}\s]/gu, " ");
   s = s.replace(/\s+/g, " ").trim();
-
   for (const { re, to } of SYN) s = s.replace(re, to);
+  return s.trim();
+}
 
-  let tokens = s.split(" ").filter(Boolean);
+function singularizeToken(t) {
+  if (t.length > 4 && t.endsWith("es")) return t.slice(0, -2);
+  if (t.length > 4 && t.endsWith("s")) return t.slice(0, -1);
+  return t;
+}
 
-  // quitamos STOP
-  tokens = tokens.filter((t) => !STOP.has(t));
+function tokensFrom(input) {
+  const base = normalizeBase(input);
+  if (!base) return [];
+  let tokens = base.split(" ").filter(Boolean).map(singularizeToken);
+  tokens = tokens.filter((t) => t && !STOP.has(t));
+  return tokens;
+}
 
-  // mini singularización segura (muy suave): correos -> correo (ya lo cubre SYN)
-  // para otros plurales simples:
-  tokens = tokens.map((t) => {
-    if (t.length > 4 && t.endsWith("es")) return t.slice(0, -2);
-    if (t.length > 4 && t.endsWith("s")) return t.slice(0, -1);
-    return t;
-  });
+// 👉 Reglas de agrupación (las “familias” que nos has pedido)
+function ruleCanonical(tokens) {
+  const set = new Set(tokens);
 
-  // si se queda vacío, al menos devolvemos el string base limpio
-  const out = tokens.join(" ").trim();
-  return out || s;
+  // 1) Correos / email
+  if (set.has("correo")) return "correo";
+
+  // 2) Actas / resúmenes de reuniones
+  // acta reunion, resumen reunion, informe reunion...
+  if (set.has("reunion") && (set.has("acta") || set.has("resumen") || set.has("informe"))) {
+    return "acta reunion";
+  }
+
+  // 3) Propuestas comerciales
+  // “informe comercial”, “propuesta comercial”, “redactar oferta comercial”...
+  const isCommercial = set.has("comercial") || set.has("venta") || set.has("ventas");
+  if (isCommercial && (set.has("propuesta") || set.has("informe"))) {
+    return "propuesta comercial";
+  }
+
+  // 4) Requisitos técnicos
+  if (set.has("requisito") && set.has("tecnico")) return "requisitos tecnicos";
+
+  // 5) Informes (genérico)
+  if (set.has("informe")) return "informe";
+
+  // Fallback: devolvemos tokens unidos (concepto)
+  if (tokens.length) return tokens.join(" ");
+
+  return null;
 }
 
 // =======================================================
-// ===== IA LOCAL (embeddings) =====
-// - Se usa SOLO para agrupar conceptos que no caen en reglas/sinónimos.
-// - Con timeout para no bloquear.
+// ===== IA LOCAL (embeddings) - opcional =====
+// (por defecto OFF para no romper estabilidad en Render)
 // =======================================================
+const USE_EMBEDDINGS = String(process.env.USE_EMBEDDINGS || "") === "1";
+
 function cosine(a, b) {
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
@@ -271,7 +322,7 @@ async function embed(text) {
   return Float32Array.from(out.data);
 }
 
-async function embedSafe(text, ms = 1200) {
+async function embedSafe(text, ms = 900) {
   try {
     return await withTimeout(embed(text), ms);
   } catch {
@@ -279,36 +330,24 @@ async function embedSafe(text, ms = 1200) {
   }
 }
 
-// ✅ devuelve una CLAVE CANÓNICA (concepto) que agrupa frases parecidas
-async function canonicalize(userText, threshold = 0.75) {
-  const concept = normalizeConcept(userText);
-  if (!concept) return null;
+async function canonicalize(userText, threshold = 0.76) {
+  const toks = tokensFrom(userText);
+  if (!toks.length) return null;
 
-  // si ya existe exacto, devolvemos (rápido)
-  if (state.q1.has(concept) || state.q2.has(concept) || state.canonEmbeddings.has(concept)) {
-    // si faltara embedding, lo calculamos perezosamente
-    if (!state.canonEmbeddings.has(concept)) {
-      const v0 = await embedSafe(concept, 900);
-      if (v0) state.canonEmbeddings.set(concept, v0);
-    }
-    return concept;
-  }
+  // 1) reglas deterministas (rápidas y fiables)
+  const ruleKey = ruleCanonical(toks);
+  if (ruleKey) return ruleKey;
 
-  // si no hay embeddings previos, guardamos el concept tal cual
-  if (state.canonEmbeddings.size === 0) {
-    const v0 = await embedSafe(concept, 900);
-    if (v0) state.canonEmbeddings.set(concept, v0);
-    return concept;
-  }
+  // 2) sin embeddings: devolvemos concepto tokens
+  const concept = toks.join(" ").trim();
+  if (!USE_EMBEDDINGS) return concept;
 
-  // embedding del concepto nuevo
-  const v = await embedSafe(concept, 1200);
-  if (!v) {
-    // fallback sin IA
-    return concept;
-  }
+  // 3) embeddings opcionales (más “IA” pero más riesgo de freeze)
+  if (state.canonEmbeddings.has(concept)) return concept;
 
-  // buscamos mejor match
+  const v = await embedSafe(concept, 900);
+  if (!v) return concept;
+
   let bestCanon = null;
   let bestScore = -1;
 
@@ -323,7 +362,6 @@ async function canonicalize(userText, threshold = 0.75) {
 
   if (bestCanon && bestScore >= threshold) return bestCanon;
 
-  // si no hay match, registramos nuevo canon
   state.canonEmbeddings.set(concept, v);
   return concept;
 }
@@ -338,11 +376,6 @@ function toStringSafe(x) {
 }
 
 function extractItems(payload) {
-  // soporta:
-  // - {items:[...]}
-  // - {item:"..."}
-  // - ["a","b"]
-  // - "texto"
   if (Array.isArray(payload)) return payload.map(toStringSafe);
   if (payload && Array.isArray(payload.items)) return payload.items.map(toStringSafe);
   if (payload && typeof payload.item === "string") return [payload.item];
@@ -351,8 +384,7 @@ function extractItems(payload) {
 }
 
 // =======================================================
-// ===== PROCESADO (sin bloquear ACK del cliente) =====
-// - Esto evita los "Error envío" aunque realmente haya llegado.
+// ===== PROCESADO (ACK inmediato para no dar “Error envío”) =====
 // =======================================================
 async function processQ1(items) {
   let changed = false;
@@ -364,9 +396,7 @@ async function processQ1(items) {
     const canonKey = await canonicalize(clean);
     if (!canonKey) continue;
 
-    // label: guardamos el primer texto humano que llegó para ese grupo
     if (!state.q1Label.has(canonKey)) state.q1Label.set(canonKey, clean);
-
     state.q1.set(canonKey, (state.q1.get(canonKey) || 0) + 1);
     changed = true;
   }
@@ -385,7 +415,6 @@ async function processQ2(item) {
   if (!canonKey) return;
 
   if (!state.q2Label.has(canonKey)) state.q2Label.set(canonKey, clean);
-
   state.q2.set(canonKey, (state.q2.get(canonKey) || 0) + 1);
 
   emitState();
@@ -398,40 +427,24 @@ async function processQ2(item) {
 io.on("connection", (socket) => {
   console.log("🟢 socket conectado:", socket.id);
 
-  socket.onAny((eventName, ...args) => {
-    const preview = (() => {
-      try {
-        const a0 = args?.[0];
-        if (!a0) return "";
-        if (typeof a0 === "string") return a0.slice(0, 120);
-        return JSON.stringify(a0).slice(0, 200);
-      } catch {
-        return "";
-      }
-    })();
-    console.log("➡️ evento:", eventName, preview);
-  });
-
   socket.on("disconnect", (reason) => {
     console.log("🔴 socket desconectado:", socket.id, reason);
   });
 
-  // estado inicial
-  socket.emit("state:update", {
-    q1: mapToArray(state.q1, state.q1Label),
-    q2: mapToArray(state.q2, state.q2Label),
-  });
+  // estado inicial (incluye meta.version)
+  emitState({ reason: "initial-connection", to: socket.id });
+  // 👆 emitState emite a todos; si prefieres solo a ese socket:
+  // socket.emit("state:update", { meta:{version:stateVersion,ts:Date.now()}, q1:..., q2:... });
 
-  // RESET (ACK inmediato)
+  // RESET (ACK inmediato + emit vacío)
   socket.on("admin:reset", (ack) => {
     try {
       if (typeof ack === "function") ack({ ok: true });
     } catch {}
     resetAll();
-    emitState();
+    emitState({ reason: "admin-reset" });
   });
 
-  // Aceptamos varios nombres por si el front emite distinto
   const q1Handlers = ["q1:submit", "q1:send", "q1:answers", "q1"];
   const q2Handlers = ["q2:submit", "q2:send", "q2:answer", "q2"];
 
@@ -439,14 +452,12 @@ io.on("connection", (socket) => {
     socket.on(ev, (payload, ack) => {
       const items = extractItems(payload).map((x) => toStringSafe(x).trim()).filter(Boolean);
 
-      // ✅ ACK inmediato (evita timeout del cliente)
+      // ✅ ACK inmediato (evita timeouts del cliente)
       try {
         if (typeof ack === "function") ack({ ok: true, accepted: items.length });
       } catch {}
 
       if (!items.length) return;
-
-      // Procesamos en “segundo plano” (sin bloquear)
       processQ1(items).catch((e) => console.error("processQ1 error:", e));
     });
   }
@@ -461,32 +472,18 @@ io.on("connection", (socket) => {
       } catch {}
 
       if (!raw) return;
-
       processQ2(raw).catch((e) => console.error("processQ2 error:", e));
     });
   }
 });
 
 // =======================================================
-// ✅ ARRANQUE: carga estado persistido + (opcional) precalienta embeddings
+// ✅ ARRANQUE
 // =======================================================
-async function warmEmbeddings() {
-  // precalienta embeddings de los conceptos ya existentes (para agrupar mejor desde el inicio)
-  const keys = new Set([
-    ...Array.from(state.q1.keys()),
-    ...Array.from(state.q2.keys()),
-  ]);
-
-  for (const k of keys) {
-    if (state.canonEmbeddings.has(k)) continue;
-    const v = await embedSafe(k, 900);
-    if (v) state.canonEmbeddings.set(k, v);
-  }
-  console.log("✅ Embeddings precalentados:", state.canonEmbeddings.size);
-}
+process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
+process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 
 await loadState();
-warmEmbeddings().catch(() => {});
 
 // Render expone PORT en env
 const PORT = Number(process.env.PORT || 3000);
