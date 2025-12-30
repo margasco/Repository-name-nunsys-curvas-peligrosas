@@ -5,20 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>DETECTANDO CURVAS PELIGROSAS · Moderador</title>
   <link rel="stylesheet" href="/styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 
 <body data-view="presenter">
   <div class="presenter">
     <div class="presenter-main">
       <header class="top">
-        <h1>DETECTANDO CURVAS PELIGROSAS</h1>
+        <h1 class="title">DETECTANDO CURVAS PELIGROSAS</h1>
 
         <div class="top-right">
-          <div class="segmented" role="tablist" aria-label="Vistas">
-            <button id="viewCompare" class="seg on" type="button">Comparar</button>
-            <button id="viewQ1" class="seg" type="button">Ver Q1</button>
-            <button id="viewQ2" class="seg" type="button">Ver Q2</button>
+          <div class="segmented" role="tablist" aria-label="Nube a mostrar">
+            <button id="viewQ1" class="seg on" type="button">Tareas que consumen tiempo</button>
+            <button id="viewQ2" class="seg" type="button">Tarea que menos gusta</button>
           </div>
 
           <button id="resetBtn" class="btn danger" type="button">RESET</button>
@@ -26,41 +24,47 @@
         </div>
       </header>
 
-      <section class="presenter-grid" id="presenterGrid">
-        <div class="card card-qr" id="cardQR">
+      <section class="presenter-grid">
+        <div class="card card-qr">
           <h2>QR para participar</h2>
           <p>Escanea para entrar en <strong>/join</strong>.</p>
 
           <div class="qrBox">
-            <canvas id="qrCanvas" width="240" height="240"></canvas>
+            <img id="qrImg" alt="Código QR para /join" />
           </div>
 
           <div class="muted" id="joinUrl"></div>
-          <div class="muted tiny" id="qrHint"></div>
+          <div class="muted tiny" id="socketStatus"></div>
         </div>
 
-        <div class="card cloudCard" id="cardQ1" data-cloud="q1">
+        <div class="card cloudCard">
           <div class="cardHead">
-            <h2>Nube · Tareas que consumen más tiempo</h2>
-            <button class="btn ghost mini zoomBtn" type="button" data-zoom="q1">Zoom</button>
+            <h2 id="cloudTitle">¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
+            <button id="zoomBtn" class="btn ghost mini" type="button">Zoom</button>
           </div>
-          <div id="cloudQ1" class="cloud"></div>
-        </div>
 
-        <div class="card cloudCard" id="cardQ2" data-cloud="q2">
-          <div class="cardHead">
-            <h2>Nube · Tarea que menos gusta</h2>
-            <button class="btn ghost mini zoomBtn" type="button" data-zoom="q2">Zoom</button>
-          </div>
-          <div id="cloudQ2" class="cloud"></div>
+          <div id="cloudBox" class="cloud"></div>
         </div>
       </section>
     </div>
 
+    <!-- Franja derecha: imagen "circuito" (sin animación) -->
     <aside class="track" aria-hidden="true">
-      <div class="track-inner"></div>
+      <div class="track-art"></div>
       <div class="track-label">rAIcers</div>
     </aside>
+
+    <!-- Modal zoom -->
+    <div id="zoomModal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop" id="modalClose"></div>
+      <div class="modal-panel">
+        <div class="modal-head">
+          <div id="modalTitle" class="modal-title"></div>
+          <button id="modalX" class="btn danger mini" type="button">Cerrar</button>
+        </div>
+        <div id="modalCloud" class="cloud cloud--big"></div>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
