@@ -4,14 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>DETECTANDO CURVAS PELIGROSAS · Join</title>
-  <link rel="stylesheet" href="/styles.css" />
+
+  <!-- ✅ evita caché (sube el ?v= cuando despliegues) -->
+  <link rel="stylesheet" href="/styles.css?v=4" />
 </head>
 
 <body data-view="join">
   <div class="wrap">
     <header class="top">
       <h1>DETECTANDO CURVAS PELIGROSAS</h1>
-      <span class="pill">ALUMNOS</span>
+
+      <div class="top-right">
+        <span class="pill">ALUMNOS</span>
+        <!-- ✅ feedback mínimo para el usuario -->
+        <span class="pill" id="joinSocketStatus" aria-live="polite">Conectando…</span>
+      </div>
     </header>
 
     <main class="grid">
@@ -51,6 +58,8 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js"></script>
+
+  <!-- ✅ evita que un móvil use app.js antiguo -->
+  <script src="/app.js?v=4"></script>
 </body>
 </html>
