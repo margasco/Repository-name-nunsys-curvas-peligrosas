@@ -6,7 +6,7 @@
   <title>DETECTANDO CURVAS PELIGROSAS · Moderador</title>
 
   <!-- ✅ evita comportamientos distintos por caché (sube el ?v= cuando despliegues) -->
-  <link rel="stylesheet" href="/styles.css?v=4" />
+  <link rel="stylesheet" href="/styles.css?v=5" />
 </head>
 
 <body data-view="presenter">
@@ -17,8 +17,12 @@
 
         <div class="top-right">
           <div class="segmented" role="tablist" aria-label="Nube a mostrar">
-            <button id="viewQ1" class="seg on" type="button" aria-selected="true">Tareas que consumen tiempo</button>
-            <button id="viewQ2" class="seg" type="button" aria-selected="false">Tarea que menos gusta</button>
+            <button id="viewQ1" class="seg on" type="button" aria-selected="true">
+              Tareas que consumen tiempo
+            </button>
+            <button id="viewQ2" class="seg" type="button" aria-selected="false">
+              Tarea que menos gusta
+            </button>
           </div>
 
           <button id="resetBtn" class="btn danger" type="button">RESET</button>
@@ -74,6 +78,6 @@
   <script src="/socket.io/socket.io.js"></script>
 
   <!-- ✅ evita que un móvil use app.js antiguo -->
-  <script src="/app.js?v=4"></script>
+  <script src="/app.js?v=5"></script>
 </body>
 </html>
