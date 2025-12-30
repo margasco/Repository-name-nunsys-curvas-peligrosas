@@ -27,6 +27,9 @@ body{
   justify-content:space-between;
   gap:16px;
   margin-bottom:18px;
+
+  /* ✅ clave: permite que en pantallas medianas el header no rompa layout */
+  flex-wrap:wrap;
 }
 
 .title{
@@ -35,13 +38,20 @@ body{
   letter-spacing:1px;
   font-size: clamp(30px, 3.2vw, 46px);
   line-height:1.05;
-  white-space: nowrap;         /* ✅ no partir en dos líneas en pantallas grandes */
+
+  /* ✅ en desktop NO partir */
+  white-space: nowrap;
+
+  /* ✅ para que el título no “expanda” el contenedor y rompa el grid */
+  flex: 1 1 auto;
+  min-width: 260px;
 }
 
 .top-right{
   display:flex;
   align-items:center;
   gap:12px;
+  flex: 0 0 auto;
 }
 
 .pill{
@@ -66,7 +76,7 @@ h2{
   font-size: 26px;
   font-weight:900;
   letter-spacing:.3px;
-  white-space: nowrap; /* ✅ evita saltos */
+  white-space: nowrap;
 }
 
 p{margin:0 0 16px;color:var(--muted);line-height:1.35}
@@ -82,6 +92,7 @@ input{
   font-size:16px;
   outline:none;
   background:#fff;
+  min-width: 0;
 }
 input:focus{
   border-color: rgba(255,74,167,.55);
@@ -131,21 +142,29 @@ input:focus{
 /* ---------------- Presenter layout ---------------- */
 
 .presenter{
+  /* ✅ Evita el “overflow” horizontal que te obliga a reducir al 67% */
+  width:100vw;
   height:100vh;
   display:grid;
-  grid-template-columns: 1fr 220px;
+
+  /* ✅ franja algo más estrecha, y el resto ocupa el 100% */
+  grid-template-columns: 1fr 200px;
+
   overflow:hidden;
 }
 
 .presenter-main{
   padding:24px 26px;
+  overflow:hidden;
+  min-width:0;
 }
 
+/* ✅ Grid fluido: QR fijo, nube el resto */
 .presenter-grid{
   display:grid;
-  grid-template-columns: 420px 1fr;
+  grid-template-columns: 420px minmax(0, 1fr);
   gap:18px;
-  align-items:start;
+  align-items:stretch; /* ✅ para que la nube pueda crecer en alto */
 }
 
 .cardHead{
@@ -202,7 +221,10 @@ input:focus{
 
 /* Cloud */
 .cloud{
-  height: 360px;
+  /* ✅ más alto: ocupa casi todo el alto disponible */
+  height: calc(100vh - 210px); /* ajusta al header/paddings */
+  min-height: 420px;
+
   border-radius:18px;
   border:2px dashed rgba(255,74,167,.30);
   padding:16px;
@@ -224,6 +246,19 @@ input:focus{
 
 .cloud-empty{color:var(--muted);font-weight:800}
 
+/* ✅ TU JS crea spans con class="cloud-word" */
+.cloud-word{
+  font-weight:900;
+  letter-spacing:.7px;
+  line-height:1;
+  padding:6px 9px;
+  border-radius:14px;
+  background: rgba(255,74,167,.08);
+  border: 1px solid rgba(255,74,167,.20);
+  white-space:nowrap;
+}
+
+/* ✅ Compatibilidad por si alguna vez quedó "word" */
 .word{
   font-weight:900;
   letter-spacing:.7px;
@@ -234,25 +269,26 @@ input:focus{
   border: 1px solid rgba(255,74,167,.20);
   white-space:nowrap;
 }
-.word.top{
-  background: rgba(255,74,167,.16);
-  border-color: rgba(255,74,167,.40);
-}
 
-/* ---------------- Track: imagen "circuito" embebida (sin mareo) ---------------- */
+/* ---------------- Track (SOFT, sin oscuro) ---------------- */
 
 .track{
   position:relative;
   border-left: 1px solid var(--line);
-  background:#0b0c12;
+
+  /* ✅ base clara */
+  background: linear-gradient(180deg, #ffffff, #f7f3fb);
   overflow:hidden;
 }
 
 .track-art{
   position:absolute; inset:0;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='1200' viewBox='0 0 220 1200'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='0' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%230b0c12'/%3E%3Cstop offset='1' stop-color='%2310141f'/%3E%3C/linearGradient%3E%3ClinearGradient id='p' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23ff4aa7' stop-opacity='.18'/%3E%3Cstop offset='1' stop-color='%23ff8bd0' stop-opacity='.10'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='220' height='1200' fill='url(%23g)'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='url(%23p)' stroke-width='34' stroke-linecap='round'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='%23ffffff' stroke-opacity='.08' stroke-width='40' stroke-linecap='round'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='%23ff4aa7' stroke-opacity='.25' stroke-width='6' stroke-dasharray='14 18'/%3E%3C/svg%3E");
+
+  /* ✅ circuito soft en blanco/rosa/gris, sin fondo oscuro */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='1200' viewBox='0 0 220 1200'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' x2='0' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffffff'/%3E%3Cstop offset='1' stop-color='%23f4f1fa'/%3E%3C/linearGradient%3E%3ClinearGradient id='road' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23d9dbe7'/%3E%3Cstop offset='1' stop-color='%23cfd3e3'/%3E%3C/linearGradient%3E%3ClinearGradient id='pink' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23ff4aa7' stop-opacity='.55'/%3E%3Cstop offset='1' stop-color='%23ff8bd0' stop-opacity='.45'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='220' height='1200' fill='url(%23bg)'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='url(%23road)' stroke-width='40' stroke-linecap='round'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='%23ffffff' stroke-opacity='.75' stroke-width='28' stroke-linecap='round'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='url(%23pink)' stroke-width='7' stroke-dasharray='14 18'/%3E%3C/svg%3E");
   background-size: cover;
   background-position:center;
+  opacity: .95;
 }
 
 .track-label{
@@ -260,13 +296,13 @@ input:focus{
   bottom:18px;
   left:50%;
   transform:translateX(-50%);
-  color: rgba(255,255,255,.9);
+  color: rgba(14,15,20,.85);
   font-weight:900;
   letter-spacing:2px;
   padding:10px 14px;
   border-radius:999px;
-  background: rgba(255,74,167,.18);
-  border:1px solid rgba(255,74,167,.35);
+  background: rgba(255,74,167,.14);
+  border:1px solid rgba(255,74,167,.30);
 }
 
 /* ---------------- Modal (zoom real) ---------------- */
@@ -309,11 +345,48 @@ input:focus{
   text-overflow:ellipsis;
 }
 
-/* Responsive */
+/* ---------------- Responsive ---------------- */
+
+/* ✅ JOIN MOBILE: input 100% + botones debajo (ya no se salen) */
+@media (max-width: 640px){
+  .wrap{padding:18px}
+  .top{gap:10px}
+  .title{white-space:normal;}
+
+  h2{white-space:normal;}
+
+  .row{
+    flex-wrap:wrap;
+    align-items:stretch;
+  }
+
+  .row input{
+    width:100%;
+    flex: 1 1 100%;
+  }
+
+  /* Q1: dos botones debajo */
+  #q1Add, #q1Send{
+    flex: 1 1 48%;
+    min-width: 0;
+  }
+
+  /* Q2: botón a 100% */
+  #q2Send{
+    width:100%;
+    flex: 1 1 100%;
+  }
+}
+
+/* ✅ PRESENTER: si el ancho baja, ocultamos la franja y hacemos 1 columna */
 @media (max-width: 1100px){
   .presenter{grid-template-columns:1fr}
   .track{display:none}
   .presenter-grid{grid-template-columns: 1fr}
-  .title{white-space:normal;} /* en móvil sí puede partir */
+  .title{white-space:normal;}
   h2{white-space:normal;}
+  .cloud{
+    height: calc(100vh - 260px);
+    min-height: 360px;
+  }
 }
