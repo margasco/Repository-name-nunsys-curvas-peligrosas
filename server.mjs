@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { pipeline } from "@xenova/transformers";
+import QRCode from "qrcode";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// ✅ RUTAS primero (evita conflictos con archivos estáticos tipo "presenter" sin extensión)
+// ✅ RUTAS primero
 app.get("/", (_req, res) => res.redirect("/join"));
 
 app.get("/join", (_req, res) => {
@@ -22,7 +23,28 @@ app.get("/presenter", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "presenter.html"));
 });
 
-// ✅ estáticos DESPUÉS
+// ✅ QR SERVER-SIDE (sin CDN)
+app.get("/qr", async (req, res) => {
+  try {
+    const u = String(req.query.u || "");
+    if (!u) return res.status(400).send("Missing url");
+
+    const pngBuffer = await QRCode.toBuffer(u, {
+      type: "png",
+      errorCorrectionLevel: "M",
+      margin: 1,
+      scale: 8,
+    });
+
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(pngBuffer);
+  } catch (e) {
+    res.status(500).send("QR error");
+  }
+});
+
+// ✅ Estáticos después
 app.use(express.static(path.join(__dirname, "public")));
 
 const httpServer = createServer(app);
@@ -30,11 +52,12 @@ const io = new Server(httpServer);
 
 // ===== ESTADO DE LA APP (se borra con RESET) =====
 const state = {
-  q1: new Map(), // canon -> count
+  q1: new Map(),
   q2: new Map(),
-  canonEmbeddings: new Map(), // canon -> embedding
+  canonEmbeddings: new Map(),
 };
 
+// reset
 function resetAll() {
   state.q1.clear();
   state.q2.clear();
@@ -111,21 +134,17 @@ async function embed(text) {
 async function canonicalize(userText, threshold = 0.78) {
   const norm = normalizeText(userText);
   if (!norm) return null;
-
-  // Si ya existe exacto, devolvemos
   if (state.canonEmbeddings.has(norm)) return norm;
 
   let v;
   try {
     v = await embed(norm);
   } catch {
-    // fallback sin IA
     return norm;
   }
 
   let bestCanon = null;
   let bestScore = -1;
-
   for (const [canon, vec] of state.canonEmbeddings.entries()) {
     const score = cosine(v, vec);
     if (score > bestScore) {
@@ -135,7 +154,6 @@ async function canonicalize(userText, threshold = 0.78) {
   }
 
   if (bestCanon && bestScore >= threshold) return bestCanon;
-
   state.canonEmbeddings.set(norm, v);
   return norm;
 }
@@ -155,19 +173,4 @@ io.on("connection", (socket) => {
   socket.on("q1:submit", async ({ items }) => {
     for (const raw of items || []) {
       const canon = await canonicalize(raw);
-      if (!canon) continue;
-      state.q1.set(canon, (state.q1.get(canon) || 0) + 1);
-    }
-    emitState();
-  });
-
-  socket.on("q2:submit", async ({ item }) => {
-    const canon = await canonicalize(item);
-    if (!canon) return;
-    state.q2.set(canon, (state.q2.get(canon) || 0) + 1);
-    emitState();
-  });
-});
-
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => console.log("Servidor activo en puerto", PORT));
+      if (!canon) continue
