@@ -8,6 +8,9 @@
   --pink2:#ff8bd0;
   --shadow: 0 10px 30px rgba(14,15,20,.08);
   --r:18px;
+
+  /* ✅ Control del ancho de la franja derecha (más parecido al original) */
+  --trackW: 280px;
 }
 
 *{box-sizing:border-box}
@@ -142,13 +145,13 @@ input:focus{
 /* ---------------- Presenter layout ---------------- */
 
 .presenter{
-  /* ✅ Evita el “overflow” horizontal que te obliga a reducir al 67% */
+  /* ✅ Evita el “overflow” horizontal */
   width:100vw;
   height:100vh;
   display:grid;
 
-  /* ✅ franja algo más estrecha, y el resto ocupa el 100% */
-  grid-template-columns: 1fr 200px;
+  /* ✅ franja más ancha y controlable */
+  grid-template-columns: 1fr var(--trackW);
 
   overflow:hidden;
 }
@@ -164,7 +167,7 @@ input:focus{
   display:grid;
   grid-template-columns: 420px minmax(0, 1fr);
   gap:18px;
-  align-items:stretch; /* ✅ para que la nube pueda crecer en alto */
+  align-items:stretch;
 }
 
 .cardHead{
@@ -221,8 +224,7 @@ input:focus{
 
 /* Cloud */
 .cloud{
-  /* ✅ más alto: ocupa casi todo el alto disponible */
-  height: calc(100vh - 210px); /* ajusta al header/paddings */
+  height: calc(100vh - 210px);
   min-height: 420px;
 
   border-radius:18px;
@@ -248,8 +250,9 @@ input:focus{
 
 /* ✅ TU JS crea spans con class="cloud-word" */
 .cloud-word{
-  font-weight:900;
-  letter-spacing:.7px;
+  /* el color/peso final lo está fijando también app.js (bien) */
+  font-weight:800;
+  letter-spacing:.6px;
   line-height:1;
   padding:6px 9px;
   border-radius:14px;
@@ -260,8 +263,8 @@ input:focus{
 
 /* ✅ Compatibilidad por si alguna vez quedó "word" */
 .word{
-  font-weight:900;
-  letter-spacing:.7px;
+  font-weight:800;
+  letter-spacing:.6px;
   line-height:1;
   padding:6px 9px;
   border-radius:14px;
@@ -275,8 +278,6 @@ input:focus{
 .track{
   position:relative;
   border-left: 1px solid var(--line);
-
-  /* ✅ base clara para que el conjunto no se oscurezca */
   background: linear-gradient(180deg, #ffffff, #f7f3fb);
   overflow:hidden;
 }
@@ -285,24 +286,35 @@ input:focus{
   position:absolute;
   inset:0;
 
-  /* ✅ TU IMAGEN */
+  /* ✅ Fallback visible aunque la imagen no cargue */
+  background-color: #ffffff;
+
+  /* ✅ TU IMAGEN (debe estar en /public/track.png) */
   background-image: url("/track.png");
-  background-size: cover;
+
+  /*
+    ✅ IMPORTANTE:
+    - contain => SIEMPRE se ve la imagen completa (ideal cuando es más ancha y no quieres “vacíos raros”)
+    - cover   => llena todo, pero puede recortar y parecer “blanco” si justo corta por una zona clara
+  */
+  background-size: contain;
+  /* background-size: cover; */
+
   background-position: center;
   background-repeat: no-repeat;
 
-  /* ✅ si la imagen tiene mucho contraste, esto ayuda a integrarla */
-  filter: saturate(1.05) contrast(0.98) brightness(1.03);
+  /* Integración suave */
+  filter: saturate(1.03) contrast(0.99) brightness(1.02);
 }
 
-/* ✅ Overlay soft para que case con el resto del UI */
+/* ✅ Overlay MUY suave (no “lava” la imagen) */
 .track-art::after{
   content:"";
   position:absolute;
   inset:0;
   background:
-    linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,.10)),
-    radial-gradient(240px 340px at 50% 30%, rgba(255,74,167,.08), transparent 65%);
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06)),
+    radial-gradient(280px 420px at 50% 26%, rgba(255,74,167,.06), transparent 68%);
   pointer-events:none;
 }
 
@@ -362,7 +374,7 @@ input:focus{
 
 /* ---------------- Responsive ---------------- */
 
-/* ✅ JOIN MOBILE: input 100% + botones debajo (ya no se salen) */
+/* ✅ JOIN MOBILE: input 100% + botones debajo */
 @media (max-width: 640px){
   .wrap{padding:18px}
   .top{gap:10px}
