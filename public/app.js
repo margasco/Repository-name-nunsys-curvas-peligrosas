@@ -1,12 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const socket = io();
   const view = document.body.dataset.view; // "join" o "presenter"
-  const socket = io({
-    transports: ["websocket", "polling"],
-  });
 
-  // -------------------------
-  // Util: render nube
-  // -------------------------
+  // ======================
+  // UTIL: render nube
+  // ======================
   function renderCloud(container, items) {
     if (!container) return;
     container.innerHTML = "";
@@ -19,31 +17,26 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const max = Math.max(...items.map(x => x.count), 1);
-    const min = Math.min(...items.map(x => x.count), 1);
-
-    const minSize = 16;
-    const maxSize = 56;
+    const max = items[0].count;
 
     items.forEach(({ text, count }) => {
-      const el = document.createElement("span");
-      el.className = "word";
-      // Siempre MAYÚSCULAS
-      el.textContent = String(text || "").toUpperCase();
-      el.title = `${count} votos`;
+      const span = document.createElement("span");
+      span.className = "cloud-word";
 
-      const norm = (count - min) / (max - min + 1e-9);
-      const size = Math.round(minSize + norm * (maxSize - minSize));
-      el.style.fontSize = `${size}px`;
+      // Normalizamos a MAYÚSCULAS (como pediste)
+      span.textContent = text.toUpperCase();
 
-      if (count === max) el.classList.add("top");
-      container.appendChild(el);
+      // Tamaño proporcional
+      const size = 16 + (count / max) * 48;
+      span.style.fontSize = `${size}px`;
+
+      container.appendChild(span);
     });
   }
 
-  // -------------------------
-  // JOIN
-  // -------------------------
+  // ======================
+  // JOIN (alumnos)
+  // ======================
   if (view === "join") {
     const q1Input = document.getElementById("q1Input");
     const q1Add = document.getElementById("q1Add");
@@ -53,160 +46,83 @@ document.addEventListener("DOMContentLoaded", () => {
     const q2Input = document.getElementById("q2Input");
     const q2Send = document.getElementById("q2Send");
 
-    let q1Items = [];
-
-    function addChip(text) {
-      const chip = document.createElement("span");
-      chip.className = "chip";
-      chip.textContent = text;
-
-      const x = document.createElement("button");
-      x.type = "button";
-      x.className = "chip-x";
-      x.textContent = "×";
-      x.addEventListener("click", () => {
-        q1Items = q1Items.filter(v => v !== text);
-        chip.remove();
-      });
-
-      chip.appendChild(x);
-      q1Chips.appendChild(chip);
-    }
+    const q1Items = [];
 
     q1Add?.addEventListener("click", () => {
-      const raw = (q1Input?.value || "").trim();
-      if (!raw) return;
-      q1Items.push(raw);
-      addChip(raw);
-      q1Input.value = "";
-      q1Input.focus();
-    });
+      const v = q1Input.value.trim();
+      if (!v) return;
 
-    q1Input?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") q1Add?.click();
+      q1Items.push(v);
+      q1Input.value = "";
+
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = v;
+      q1Chips.appendChild(chip);
     });
 
     q1Send?.addEventListener("click", () => {
-      if (!q1Items.length) return;
+      if (q1Items.length === 0) return;
       socket.emit("q1:submit", { items: q1Items });
-      q1Items = [];
+      q1Items.length = 0;
       q1Chips.innerHTML = "";
     });
 
     q2Send?.addEventListener("click", () => {
-      const raw = (q2Input?.value || "").trim();
-      if (!raw) return;
-      socket.emit("q2:submit", { item: raw });
+      const v = q2Input.value.trim();
+      if (!v) return;
+      socket.emit("q2:submit", { item: v });
       q2Input.value = "";
-      q2Input.focus();
-    });
-
-    q2Input?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") q2Send?.click();
     });
   }
 
-  // -------------------------
-  // PRESENTER
-  // -------------------------
+  // ======================
+  // PRESENTER (moderador)
+  // ======================
   if (view === "presenter") {
-    const joinUrl = `${window.location.origin}/join`;
-
-    const joinUrlEl = document.getElementById("joinUrl");
-    const qrImg = document.getElementById("qrImg");
-    const socketStatus = document.getElementById("socketStatus");
-
-    const resetBtn = document.getElementById("resetBtn");
-
-    const btnQ1 = document.getElementById("viewQ1");
-    const btnQ2 = document.getElementById("viewQ2");
-
-    const cloudTitle = document.getElementById("cloudTitle");
     const cloudBox = document.getElementById("cloudBox");
-
-    // Modal zoom
-    const zoomBtn = document.getElementById("zoomBtn");
-    const modal = document.getElementById("zoomModal");
-    const modalClose = document.getElementById("modalClose");
-    const modalX = document.getElementById("modalX");
-    const modalTitle = document.getElementById("modalTitle");
     const modalCloud = document.getElementById("modalCloud");
+    const cloudTitle = document.getElementById("cloudTitle");
 
-    // Estado local
-    let currentView = "q1";
+    let current = "q1";
     let lastState = { q1: [], q2: [] };
 
-    function setActive(which) {
-      currentView = which;
+    function refresh() {
+      const data = lastState[current];
+      renderCloud(cloudBox, data);
+      renderCloud(modalCloud, data);
 
-      btnQ1?.classList.toggle("on", which === "q1");
-      btnQ2?.classList.toggle("on", which === "q2");
-
-      if (which === "q1") {
-        cloudTitle.textContent = "¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?";
-        renderCloud(cloudBox, lastState.q1);
-      } else {
-        cloudTitle.textContent = "¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?";
-        renderCloud(cloudBox, lastState.q2);
-      }
+      cloudTitle.textContent =
+        current === "q1"
+          ? "¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?"
+          : "¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?";
     }
 
-    btnQ1?.addEventListener("click", () => setActive("q1"));
-    btnQ2?.addEventListener("click", () => setActive("q2"));
+    socket.on("state:update", (state) => {
+      lastState = state;
+      refresh();
+    });
 
-    // QR desde servidor (ruta /qr?u=...)
+    document.getElementById("viewQ1")?.addEventListener("click", () => {
+      current = "q1";
+      refresh();
+    });
+
+    document.getElementById("viewQ2")?.addEventListener("click", () => {
+      current = "q2";
+      refresh();
+    });
+
+    document.getElementById("resetBtn")?.addEventListener("click", () => {
+      socket.emit("admin:reset");
+    });
+
+    // QR
+    const joinUrl = `${location.origin}/join`;
+    const qrImg = document.getElementById("qrImg");
+    const joinUrlEl = document.getElementById("joinUrl");
+
+    if (qrImg) qrImg.src = `/qr?u=${encodeURIComponent(joinUrl)}`;
     if (joinUrlEl) joinUrlEl.textContent = joinUrl;
-    if (qrImg) {
-      qrImg.src = `/qr?u=${encodeURIComponent(joinUrl)}`;
-    }
-
-    // Socket status (para depurar)
-    socket.on("connect", () => {
-      if (socketStatus) socketStatus.textContent = "Conectado · tiempo real activo ✅";
-    });
-    socket.on("disconnect", () => {
-      if (socketStatus) socketStatus.textContent = "Desconectado · revisa conexión ⚠️";
-    });
-
-    resetBtn?.addEventListener("click", () => socket.emit("admin:reset"));
-
-    socket.on("state:update", (payload) => {
-      lastState = {
-        q1: payload?.q1 || [],
-        q2: payload?.q2 || [],
-      };
-      // Re-render de la vista actual
-      setActive(currentView);
-    });
-
-    // Zoom real (modal)
-    function openModal() {
-      if (!modal) return;
-      modal.setAttribute("aria-hidden", "false");
-      modal.classList.add("open");
-
-      const title = currentView === "q1"
-        ? "¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?"
-        : "¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?";
-      modalTitle.textContent = title;
-
-      const items = currentView === "q1" ? lastState.q1 : lastState.q2;
-      renderCloud(modalCloud, items);
-    }
-
-    function closeModal() {
-      modal?.classList.remove("open");
-      modal?.setAttribute("aria-hidden", "true");
-    }
-
-    zoomBtn?.addEventListener("click", openModal);
-    modalClose?.addEventListener("click", closeModal);
-    modalX?.addEventListener("click", closeModal);
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeModal();
-    });
-
-    // Default Q1
-    setActive("q1");
   }
 });
