@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// ✅ RUTAS primero
+// ✅ RUTAS primero (para evitar conflictos con archivos estáticos)
 app.get("/", (_req, res) => res.redirect("/join"));
 
 app.get("/join", (_req, res) => {
@@ -23,7 +23,7 @@ app.get("/presenter", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "presenter.html"));
 });
 
-// ✅ QR SERVER-SIDE (sin CDN)
+// ✅ QR server-side (sin CDN)
 app.get("/qr", async (req, res) => {
   try {
     const u = String(req.query.u || "");
@@ -40,6 +40,7 @@ app.get("/qr", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.send(pngBuffer);
   } catch (e) {
+    console.error("QR error:", e);
     res.status(500).send("QR error");
   }
 });
@@ -48,16 +49,23 @@ app.get("/qr", async (req, res) => {
 app.use(express.static(path.join(__dirname, "public")));
 
 const httpServer = createServer(app);
-const io = new Server(httpServer);
 
-// ===== ESTADO DE LA APP (se borra con RESET) =====
+// ✅ Socket.IO robusto en Render
+const io = new Server(httpServer, {
+  transports: ["websocket", "polling"],
+  cors: {
+    origin: true, // permite el propio dominio del servicio
+    methods: ["GET", "POST"],
+  },
+});
+
+// ===== ESTADO DE LA APP =====
 const state = {
-  q1: new Map(),
-  q2: new Map(),
-  canonEmbeddings: new Map(),
+  q1: new Map(),            // canon -> count
+  q2: new Map(),            // canon -> count
+  canonEmbeddings: new Map()// canon -> embedding
 };
 
-// reset
 function resetAll() {
   state.q1.clear();
   state.q2.clear();
@@ -77,7 +85,7 @@ function emitState() {
   });
 }
 
-// ===== NORMALIZACIÓN DE TEXTO (ANTES DE IA) =====
+// ===== NORMALIZACIÓN =====
 const STOP = new Set([
   "de","la","el","los","las","un","una","y","o","a","en","para","por","con",
   "del","al","que","me","mi","mis","tu","tus","su","sus","hacer","realizar",
@@ -102,7 +110,7 @@ function normalizeText(input) {
   return tokens.join(" ").trim();
 }
 
-// ===== IA LOCAL (SIN API KEYS) =====
+// ===== IA LOCAL =====
 function cosine(a, b) {
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
@@ -134,12 +142,15 @@ async function embed(text) {
 async function canonicalize(userText, threshold = 0.78) {
   const norm = normalizeText(userText);
   if (!norm) return null;
+
+  // ya conocido
   if (state.canonEmbeddings.has(norm)) return norm;
 
   let v;
   try {
     v = await embed(norm);
   } catch {
+    // fallback sin IA
     return norm;
   }
 
@@ -158,8 +169,9 @@ async function canonicalize(userText, threshold = 0.78) {
   return norm;
 }
 
-// ===== SOCKETS (TIEMPO REAL) =====
+// ===== SOCKETS =====
 io.on("connection", (socket) => {
+  // estado inicial
   socket.emit("state:update", {
     q1: mapToArray(state.q1),
     q2: mapToArray(state.q2),
@@ -173,4 +185,20 @@ io.on("connection", (socket) => {
   socket.on("q1:submit", async ({ items }) => {
     for (const raw of items || []) {
       const canon = await canonicalize(raw);
-      if (!canon) continue
+      if (!canon) continue;
+      state.q1.set(canon, (state.q1.get(canon) || 0) + 1);
+    }
+    emitState();
+  });
+
+  socket.on("q2:submit", async ({ item }) => {
+    const canon = await canonicalize(item);
+    if (!canon) return;
+    state.q2.set(canon, (state.q2.get(canon) || 0) + 1);
+    emitState();
+  });
+});
+
+// Render expone PORT en env
+const PORT = Number(process.env.PORT || 3000);
+httpServer.listen(PORT, () => console.log("Servidor activo en puerto", PORT));
