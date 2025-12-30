@@ -126,17 +126,63 @@ input:focus{
 }
 
 .chips{margin-top:14px;display:flex;flex-wrap:wrap;gap:10px}
+
+/* =========================
+   ✅ CHIPS CON "X" EN ESQUINA
+   ========================= */
 .chip{
-  display:inline-flex;align-items:center;gap:10px;
-  padding:10px 12px;border-radius:999px;
+  position: relative; /* ✅ para posicionar la X */
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px;
+  padding-right: 38px; /* ✅ deja hueco para la X */
+  border-radius:999px;
   background: rgba(255,74,167,.10);
   border:1px solid rgba(255,74,167,.25);
   font-weight:800;
 }
+
+/* botón X en esquina */
 .chip-x{
-  border:none;background: rgba(0,0,0,.08);
-  width:22px;height:22px;border-radius:999px;
-  cursor:pointer;font-weight:900;
+  position:absolute;
+  top:4px;
+  right:4px;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  width:22px;
+  height:22px;
+  border-radius:999px;
+
+  border:1px solid rgba(255,74,167,.22);
+  background: rgba(255,74,167,.12);
+
+  color: rgba(14,15,20,.70);
+  cursor:pointer;
+  font-weight:900;
+  line-height:1;
+
+  transition: transform .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.chip-x:hover{
+  background: rgba(255,74,167,.20);
+  border-color: rgba(255,74,167,.38);
+  transform: scale(1.04);
+}
+
+.chip-x:active{ transform: scale(.98); }
+
+.chip-x:focus{
+  outline:none;
+}
+
+.chip-x:focus-visible{
+  box-shadow: 0 0 0 4px rgba(255,74,167,.16);
+  border-color: rgba(255,74,167,.55);
 }
 
 /* ---------------- Presenter layout ---------------- */
@@ -199,26 +245,20 @@ input:focus{
 }
 
 /* ---------------- QR como "popup" flotante (SIN tocar HTML) ---------------- */
-/* Usamos la card existente .card-qr, pero la sacamos del layout normal y la
-   convertimos en widget plegable (hover). */
 
 .card-qr{
   position: fixed;
-  /* ✅ colocación: esquina inferior derecha del área del moderador (sin invadir track) */
   right: calc(var(--trackW) + 18px);
   bottom: 18px;
   width: var(--qrW);
   z-index: 950;
 
-  /* compacto */
   padding: 12px 12px;
   border-radius: 18px;
 
-  /* look "widget" */
   box-shadow: 0 16px 40px rgba(14,15,20,.12);
 }
 
-/* Ajuste texto del widget */
 .card-qr h2{
   font-size: 16px;
   margin: 0 0 6px;
@@ -231,7 +271,6 @@ input:focus{
   line-height: 1.25;
 }
 
-/* Caja QR: por defecto plegada */
 .card-qr .qrBox{
   width:100%;
   height: 0;
@@ -247,34 +286,21 @@ input:focus{
   transition: height .20s ease, opacity .20s ease, transform .20s ease;
 }
 
-/* Imagen QR: se adapta al contenedor */
 #qrImg{
   width: 200px;
   height: 200px;
   image-rendering: pixelated;
 }
 
-/* URL y estado: compactos */
 #joinUrl{font-size:12px}
 #socketStatus{font-size:12px}
 
-/* Al pasar el ratón por el widget, se “abre” el popup */
 .card-qr:hover .qrBox{
   height: 220px;
   opacity: 1;
   transform: translateY(0);
   margin: 8px 0 8px;
 }
-
-/* Si quieres que siempre esté abierto en desktop, comenta lo de arriba y descomenta esto */
-/*
-.card-qr .qrBox{
-  height:220px;
-  opacity:1;
-  transform:none;
-  margin: 8px 0 8px;
-}
-*/
 
 /* ---------------- Cloud ---------------- */
 
@@ -286,7 +312,6 @@ input:focus{
   border:2px dashed rgba(255,74,167,.30);
   padding:16px;
 
-  /* ✅ si hay muchas palabras, que NO se corten */
   overflow:auto;
 
   background:
@@ -310,34 +335,99 @@ input:focus{
   font-weight:800;
 }
 
-/* ✅ Nube: tipografía más moderna, menos agresiva (y rosa).
-   OJO: app.js puede meter estilos inline; aquí damos base consistente. */
+/* =========================
+   ✅ CLOUD WORD + CONTADOR
+   ========================= */
 .cloud-word{
+  position: relative;          /* ✅ para badge */
+  padding: 6px 10px;
+  padding-right: 34px;         /* ✅ hueco para badge */
+
   color: var(--pink);
   font-weight: 650;
   letter-spacing: .55px;
   line-height: 1;
-  padding: 6px 9px;
+
   border-radius: 14px;
   background: rgba(255,74,167,.08);
   border: 1px solid rgba(255,74,167,.18);
   white-space: nowrap;
 
-  /* toque “futurista/soft” */
   font-family: ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+/* Badge si lo pintamos con <span class="cloud-count">12</span> */
+.cloud-count{
+  position:absolute;
+  top:-7px;
+  right:-7px;
+
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  border-radius:999px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .2px;
+
+  color: rgba(14,15,20,.82);
+  background: rgba(255,74,167,.18);
+  border: 1px solid rgba(255,74,167,.30);
+
+  box-shadow: 0 10px 22px rgba(14,15,20,.10);
+  pointer-events:none; /* ✅ no molesta al scroll/click */
+}
+
+/* Fallback: si en JS prefieres setear data-count="12" en vez de crear span */
+.cloud-word[data-count]::after{
+  content: attr(data-count);
+  position:absolute;
+  top:-7px;
+  right:-7px;
+
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  border-radius:999px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .2px;
+
+  color: rgba(14,15,20,.82);
+  background: rgba(255,74,167,.18);
+  border: 1px solid rgba(255,74,167,.30);
+
+  box-shadow: 0 10px 22px rgba(14,15,20,.10);
+  pointer-events:none;
 }
 
 /* Compatibilidad si existiera clase vieja */
 .word{
+  position: relative;
+  padding: 6px 10px;
+  padding-right: 34px;
+
   color: var(--pink);
   font-weight: 650;
   letter-spacing: .55px;
   line-height: 1;
-  padding: 6px 9px;
+
   border-radius: 14px;
   background: rgba(255,74,167,.08);
   border: 1px solid rgba(255,74,167,.18);
   white-space: nowrap;
+
+  font-family: ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
 /* ---------------- Track (TU IMAGEN track.png) ---------------- */
@@ -353,11 +443,6 @@ input:focus{
   position:absolute;
   inset:0;
 }
-
-/* ✅ Truco PRO:
-   - ::before = misma imagen en modo COVER + blur (rellena y evita “blancos”)
-   - ::after  = imagen en modo CONTAIN (se ve completa encima)
-   Así, aunque track.png sea más ancha, siempre queda bien. */
 
 .track-art::before{
   content:"";
@@ -377,14 +462,13 @@ input:focus{
   position:absolute;
   inset:0;
   background-image: url("/track.png");
-  background-size: contain; /* ✅ imagen completa */
+  background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
   filter: saturate(1.03) contrast(.99) brightness(1.02);
   opacity: 1;
 }
 
-/* Label */
 .track-label{
   position:absolute;
   bottom:18px;
@@ -441,7 +525,6 @@ input:focus{
 
 /* ---------------- Responsive ---------------- */
 
-/* ✅ JOIN MOBILE: input 100% + botones debajo */
 @media (max-width: 640px){
   .wrap{padding:18px}
   .top{gap:10px}
@@ -458,20 +541,21 @@ input:focus{
     flex: 1 1 100%;
   }
 
-  /* Q1: dos botones debajo */
   #q1Add, #q1Send{
     flex: 1 1 48%;
     min-width: 0;
   }
 
-  /* Q2: botón a 100% */
   #q2Send{
     width:100%;
     flex: 1 1 100%;
   }
+
+  /* ✅ chip X un pelín más grande en táctil */
+  .chip{ padding-right: 42px; }
+  .chip-x{ width:24px; height:24px; }
 }
 
-/* ✅ PRESENTER: si el ancho baja, ocultamos la franja y hacemos 1 columna */
 @media (max-width: 1100px){
   :root{ --trackW: 0px; }
 
@@ -486,7 +570,6 @@ input:focus{
     min-height: 360px;
   }
 
-  /* En pantallas pequeñas no tiene sentido popup QR (y puede tapar). Lo normal es ocultarlo. */
   .card-qr{
     display:none;
   }
