@@ -17,10 +17,25 @@
 
         <div class="top-right">
           <div class="segmented" role="tablist" aria-label="Nube a mostrar">
-            <button id="viewQ1" class="seg on" type="button" aria-selected="true">
+            <button
+              id="viewQ1"
+              class="seg on"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="cloudBox"
+            >
               Tareas que consumen tiempo
             </button>
-            <button id="viewQ2" class="seg" type="button" aria-selected="false">
+
+            <button
+              id="viewQ2"
+              class="seg"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="cloudBox"
+            >
               Tarea que menos gusta
             </button>
           </div>
@@ -48,7 +63,9 @@
         <div class="card cloudCard">
           <div class="cardHead">
             <h2 id="cloudTitle">¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
-            <button id="zoomBtn" class="btn ghost mini" type="button">Zoom</button>
+            <button id="zoomBtn" class="btn ghost mini" type="button" aria-label="Ampliar nube">
+              Zoom
+            </button>
           </div>
 
           <div id="cloudBox" class="cloud"></div>
