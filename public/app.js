@@ -120,11 +120,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const minSize = 13;
     const maxSize = n > 40 ? 78 : n > 25 ? 88 : 96;
 
-    // Escalado "power": si el top es 10x, se nota MUCHO.
-    // t = (c/max)^p  con p < 1 amplifica diferencias en la cola,
-    // pero aquí queremos lo contrario: más diferencia arriba, menos abajo,
-    // así que usamos p > 1.
-    const p = 1.75;
+    // ✅ Curva "power": p > 1 hace MÁS jerarquía (top más dominante)
+    const p = 1.35;
 
     items.forEach(({ text, count }, idx) => {
       const c = Math.max(1, Number(count || 1));
@@ -133,10 +130,15 @@ document.addEventListener("DOMContentLoaded", () => {
       span.className = "cloud-word";
       span.textContent = String(text || "").toUpperCase();
 
+      // tooltip útil (y accesible)
+      span.title = `${String(text || "").toUpperCase()} · ${c}`;
+
       // ratio 0..1
       const r = c / max;
-      // power scaling (más jerarquía)
-      const t = Math.pow(r, 1 / p); // <— hace que el top escale más vs cola
+
+      // ✅ FIX REAL: usamos r^p (no r^(1/p)) para reforzar jerarquía
+      const t = Math.pow(r, p);
+
       const size = Math.round(minSize + t * (maxSize - minSize));
       span.style.fontSize = `${size}px`;
 
@@ -150,6 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const badge = document.createElement("span");
       badge.className = "cloud-count";
       badge.textContent = String(c);
+      badge.setAttribute("aria-hidden", "true");
       span.appendChild(badge);
 
       // suaviza cambios al actualizar en vivo
