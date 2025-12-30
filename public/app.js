@@ -87,7 +87,6 @@ document.addEventListener("DOMContentLoaded", () => {
     for (const msg of outbox) {
       try {
         socket.emit(msg.ev, msg.payload, () => {});
-        // si no ha lanzado excepción, lo damos por enviado
       } catch {
         remaining.push(msg);
       }
@@ -97,7 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ======================
-  // RENDER NUBE (escalado pro)
+  // RENDER NUBE (jerarquía MUCHO más marcada + contador)
   // ======================
   function renderCloud(container, items) {
     if (!container) return;
@@ -112,37 +111,48 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // items viene ordenado desc por count (del server)
-    const max = Number(items[0]?.count || 1);
+    const max = Math.max(1, Number(items[0]?.count || 1));
     const n = items.length;
 
-    // ✅ Evita que “reviente” si hay muchísimas palabras
-    const minSize = 14;
-    const maxSize = n > 40 ? 46 : n > 25 ? 54 : 64;
+    // Queremos MUCHA jerarquía:
+    // - el top domina claramente cuando hay diferencia real
+    // - pero sin que lo pequeño sea ilegible
+    const minSize = 13;
+    const maxSize = n > 40 ? 78 : n > 25 ? 88 : 96;
 
-    const logMax = Math.log(max + 1);
+    // Escalado "power": si el top es 10x, se nota MUCHO.
+    // t = (c/max)^p  con p < 1 amplifica diferencias en la cola,
+    // pero aquí queremos lo contrario: más diferencia arriba, menos abajo,
+    // así que usamos p > 1.
+    const p = 1.75;
 
     items.forEach(({ text, count }, idx) => {
+      const c = Math.max(1, Number(count || 1));
+
       const span = document.createElement("span");
       span.className = "cloud-word";
       span.textContent = String(text || "").toUpperCase();
 
-      const c = Math.max(1, Number(count || 1));
-
-      // ✅ Escalado logarítmico: diferencia 1/2/3/4... pero sin gigantismos
-      const t = logMax > 0 ? Math.log(c + 1) / logMax : 0;
+      // ratio 0..1
+      const r = c / max;
+      // power scaling (más jerarquía)
+      const t = Math.pow(r, 1 / p); // <— hace que el top escale más vs cola
       const size = Math.round(minSize + t * (maxSize - minSize));
       span.style.fontSize = `${size}px`;
 
-      span.style.color = "var(--pink)";
-      span.style.fontWeight = "650";
-      span.style.fontFamily =
-        "ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-
+      // micro-destacado del #1
       if (idx === 0) {
         span.style.background = "rgba(255,74,167,.14)";
         span.style.borderColor = "rgba(255,74,167,.38)";
       }
 
+      // ✅ contador: badge
+      const badge = document.createElement("span");
+      badge.className = "cloud-count";
+      badge.textContent = String(c);
+      span.appendChild(badge);
+
+      // suaviza cambios al actualizar en vivo
       span.style.transition = "font-size 220ms ease, transform 220ms ease";
       container.appendChild(span);
     });
@@ -203,11 +213,31 @@ document.addEventListener("DOMContentLoaded", () => {
       setTimeout(() => (btn.textContent = old), ms);
     }
 
-    function addChip(v) {
-      const chip = document.createElement("span");
-      chip.className = "chip";
-      chip.textContent = v;
-      q1Chips?.appendChild(chip);
+    function removeQ1ItemAt(index) {
+      if (index < 0 || index >= q1Items.length) return;
+      q1Items.splice(index, 1);
+      renderQ1Chips();
+    }
+
+    function renderQ1Chips() {
+      if (!q1Chips) return;
+      q1Chips.innerHTML = "";
+
+      q1Items.forEach((v, idx) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = v;
+
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "chip-x";
+        x.setAttribute("aria-label", `Eliminar: ${v}`);
+        x.textContent = "×";
+        x.addEventListener("click", () => removeQ1ItemAt(idx));
+
+        chip.appendChild(x);
+        q1Chips.appendChild(chip);
+      });
     }
 
     function clearQ1UI() {
@@ -217,7 +247,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function emitReliable(eventName, payload, btn, onSuccess) {
-      // si no hay conexión: ENCOLA y UX OK
       if (!socket.connected) {
         enqueue(eventName, payload);
         flashBtn(btn, "En cola ✓");
@@ -227,7 +256,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       let done = false;
 
-      // si el ACK no vuelve (red móvil), no castigamos UX
       const optimisticTimer = setTimeout(() => {
         if (done) return;
         done = true;
@@ -264,11 +292,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       q1Items.push(v);
       if (q1Input) q1Input.value = "";
-      addChip(v);
+      renderQ1Chips();
       q1Input?.focus();
     });
 
-    // Enter en Q1 = Añadir (como ya estaba)
+    // Enter en Q1 = Añadir
     q1Input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -284,22 +312,21 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // ✅ FIX CRÍTICO:
-    // ENVIAR Q1 debe funcionar aunque NO hayas pulsado "Añadir".
-    // Si no hay chips, usa el valor del input como única tarea.
+    // ✅ ENVIAR Q1:
+    // - si hay chips: envía chips
+    // - si hay input y no hay chips: envía 1 item
+    // - si hay chips y hay input: añade el input automáticamente al envío
     q1Send?.addEventListener("click", () => {
       if (sendingQ1) return;
 
       const direct = q1Input?.value?.trim() || "";
-
-      // caso A: hay chips
       const hasChips = q1Items.length > 0;
 
-      // caso B: no hay chips pero hay input escrito
       if (!hasChips && !direct) return;
 
-      // si no hay chips y hay input, lo convertimos en envío de 1 item
-      const itemsToSend = hasChips ? [...q1Items] : [direct];
+      const itemsToSend = hasChips ? [...q1Items] : [];
+
+      if (direct) itemsToSend.push(direct);
 
       sendingQ1 = true;
       if (q1Send) q1Send.disabled = true;
@@ -307,9 +334,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const payload = { items: itemsToSend };
 
       emitReliable("q1:submit", payload, q1Send, () => {
-        // UX: limpiamos tanto chips como input
         clearQ1UI();
-
         sendingQ1 = false;
         if (q1Send) q1Send.disabled = false;
       });
@@ -359,18 +384,35 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalX = document.getElementById("modalX");
     const modalTitle = document.getElementById("modalTitle");
 
+    const btnQ1 = document.getElementById("viewQ1");
+    const btnQ2 = document.getElementById("viewQ2");
+
     let current = "q1";
 
     let lastState =
       safeJsonParse(localStorage.getItem(LS_STATE_KEY), null) || { q1: [], q2: [] };
 
-    // ventana donde SÍ permitimos vacío (tras reset)
     let allowEmptyUntil = 0;
 
     function currentTitle() {
       return current === "q1"
         ? "¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?"
         : "¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?";
+    }
+
+    function paintTabs() {
+      if (!btnQ1 || !btnQ2) return;
+      if (current === "q1") {
+        btnQ1.classList.add("on");
+        btnQ2.classList.remove("on");
+        btnQ1.setAttribute("aria-selected", "true");
+        btnQ2.setAttribute("aria-selected", "false");
+      } else {
+        btnQ2.classList.add("on");
+        btnQ1.classList.remove("on");
+        btnQ2.setAttribute("aria-selected", "true");
+        btnQ1.setAttribute("aria-selected", "false");
+      }
     }
 
     function refresh() {
@@ -381,12 +423,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const title = currentTitle();
       if (cloudTitle) cloudTitle.textContent = title;
       if (modalTitle) modalTitle.textContent = title;
+
+      paintTabs();
     }
 
     refresh();
 
     socket.on("state:update", (state) => {
-      // soporta {meta, q1, q2} o {q1, q2}
       const incoming = state && (state.q1 || state.q2) ? state : { q1: [], q2: [] };
 
       const incomingQ1 = Array.isArray(incoming.q1) ? incoming.q1 : [];
@@ -400,7 +443,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const recentlyDisconnected = now() - lastDisconnectAt < 30000;
       const allowEmpty = now() < allowEmptyUntil;
 
-      // ✅ anti-borrado
       if (incomingEmpty && weHaveData && !allowEmpty && recentlyDisconnected) {
         console.log("⚠️ Ignoramos estado vacío tras corte/reconexión (anti-borrado).");
         setSocketStatus("🟡 Conectado (mostrando últimos datos)");
@@ -413,12 +455,12 @@ document.addEventListener("DOMContentLoaded", () => {
       refresh();
     });
 
-    document.getElementById("viewQ1")?.addEventListener("click", () => {
+    btnQ1?.addEventListener("click", () => {
       current = "q1";
       refresh();
     });
 
-    document.getElementById("viewQ2")?.addEventListener("click", () => {
+    btnQ2?.addEventListener("click", () => {
       current = "q2";
       refresh();
     });
@@ -428,7 +470,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       allowEmptyUntil = now() + 12000;
 
-      // UX: borrado inmediato local
       lastState = { q1: [], q2: [] };
       localStorage.setItem(LS_STATE_KEY, JSON.stringify(lastState));
       refresh();
