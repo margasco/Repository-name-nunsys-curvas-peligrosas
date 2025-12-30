@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>DETECTANDO CURVAS PELIGROSAS · Moderador</title>
-  <link rel="stylesheet" href="/styles.css" />
+
+  <!-- ✅ evita comportamientos distintos por caché (sube el ?v= cuando despliegues) -->
+  <link rel="stylesheet" href="/styles.css?v=4" />
 </head>
 
 <body data-view="presenter">
@@ -15,8 +17,8 @@
 
         <div class="top-right">
           <div class="segmented" role="tablist" aria-label="Nube a mostrar">
-            <button id="viewQ1" class="seg on" type="button">Tareas que consumen tiempo</button>
-            <button id="viewQ2" class="seg" type="button">Tarea que menos gusta</button>
+            <button id="viewQ1" class="seg on" type="button" aria-selected="true">Tareas que consumen tiempo</button>
+            <button id="viewQ2" class="seg" type="button" aria-selected="false">Tarea que menos gusta</button>
           </div>
 
           <button id="resetBtn" class="btn danger" type="button">RESET</button>
@@ -34,7 +36,9 @@
           </div>
 
           <div class="muted" id="joinUrl"></div>
-          <div class="muted tiny" id="socketStatus"></div>
+
+          <!-- ✅ aria-live para que el estado se “actualice” sin glitches -->
+          <div class="muted tiny" id="socketStatus" aria-live="polite"></div>
         </div>
 
         <div class="card cloudCard">
@@ -48,7 +52,7 @@
       </section>
     </div>
 
-    <!-- Franja derecha: imagen "circuito" (sin animación) -->
+    <!-- Franja derecha: imagen "circuito" -->
     <aside class="track" aria-hidden="true">
       <div class="track-art"></div>
       <div class="track-label">rAIcers</div>
@@ -68,6 +72,8 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js"></script>
+
+  <!-- ✅ evita que un móvil use app.js antiguo -->
+  <script src="/app.js?v=4"></script>
 </body>
 </html>
