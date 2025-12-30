@@ -20,15 +20,22 @@ app.use(express.json({ limit: "256kb" }));
 app.get("/", (_req, res) => res.redirect("/join"));
 
 app.get("/join", (_req, res) => {
+  // ✅ evita que el HTML se quede cacheado en móviles “raros”
+  res.setHeader("Cache-Control", "no-store");
   res.sendFile(path.join(__dirname, "public", "join.html"));
 });
 
 app.get("/presenter", (_req, res) => {
+  // ✅ evita que el HTML se quede cacheado
+  res.setHeader("Cache-Control", "no-store");
   res.sendFile(path.join(__dirname, "public", "presenter.html"));
 });
 
 // Healthcheck (útil en Render)
-app.get("/health", (_req, res) => res.status(200).send("ok"));
+app.get("/health", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).send("ok");
+});
 
 // QR server-side (sin CDN)
 app.get("/qr", async (req, res) => {
@@ -53,6 +60,7 @@ app.get("/qr", async (req, res) => {
 });
 
 // Estáticos
+// ✅ maxAge OK si usas ?v= en assets. Mantengo tu config.
 app.use(express.static(path.join(__dirname, "public"), { maxAge: "1h" }));
 
 const httpServer = createServer(app);
@@ -102,6 +110,7 @@ async function saveState() {
       ts: Date.now(),
     },
   };
+
   await fs.writeFile(STATE_FILE, JSON.stringify(payload, null, 2), "utf8");
 }
 
@@ -129,11 +138,10 @@ async function loadState() {
       state.q2Label.set(row.k, String(row.label || row.k));
     }
 
-    // Recupera versión si existe
     const v = Number(data?.meta?.version || 0);
     if (Number.isFinite(v) && v > 0) stateVersion = v;
 
-    console.log("✅ Estado cargado desde state.json");
+    console.log("✅ Estado cargado desde state.json (version:", stateVersion + ")");
   } catch (e) {
     console.error("loadState error:", e);
   }
@@ -143,14 +151,19 @@ async function loadState() {
 // ESTADO
 // ==============================
 const state = {
-  q1: new Map(),          // canonKey -> count
-  q2: new Map(),          // canonKey -> count
-  q1Label: new Map(),     // canonKey -> primer texto humano
+  q1: new Map(), // canonKey -> count
+  q2: new Map(), // canonKey -> count
+  q1Label: new Map(), // canonKey -> primer texto humano
   q2Label: new Map(),
   canonEmbeddings: new Map(), // solo si USE_EMBEDDINGS=1
 };
 
 let stateVersion = 0;
+
+function bumpVersion(reason) {
+  stateVersion += 1;
+  console.log("🧾 stateVersion:", stateVersion, "reason:", reason);
+}
 
 function resetAll() {
   state.q1.clear();
@@ -160,12 +173,6 @@ function resetAll() {
   state.canonEmbeddings.clear();
   bumpVersion("admin-reset");
   scheduleSave();
-}
-
-function bumpVersion(reason) {
-  stateVersion += 1;
-  // guardamos razón solo en logs (no persistimos como “verdad”)
-  console.log("🧾 stateVersion:", stateVersion, "reason:", reason);
 }
 
 function mapToArray(map, labelMap) {
@@ -199,24 +206,47 @@ function emitState(metaExtra = {}) {
 const STOP = new Set([
   "de","la","el","los","las","un","una","y","o","a","en","para","por","con",
   "del","al","que","me","mi","mis","tu","tus","su","sus",
+
+  // verbos frecuentes (quitar “acción” y quedarse con “concepto”)
   "hacer","realizar","tener","gestionar","llevar",
   "responder","contestar","redactar","escribir","enviar","leer","revisar",
   "preparar","crear","rellenar","completar","tramitar","procesar","organizar",
   "coordinar","planificar","agendar","programar","buscar","actualizar",
   "solucionar","resolver","atender","seguir","seguimiento",
   "pasar","sacar","generar","montar","armar","validar","definir",
+
+  // ✅ importante: “resumir” es el caso que te fallaba
+  "resumir",
 ]);
 
 const SYN = [
+  // correos
   { re: /\b(e-?mails?|emails?|mail(?:es)?|correo(?:s)?|correos? electronicos?)\b/g, to: "correo" },
   { re: /\b(outlook)\b/g, to: "correo" },
+
+  // reuniones
   { re: /\b(reuniones?)\b/g, to: "reunion" },
+
+  // informes
   { re: /\b(informes?|reportes?)\b/g, to: "informe" },
+
+  // actas/minutas
   { re: /\b(actas?|minutas?)\b/g, to: "acta" },
+
+  // propuestas / ofertas / presupuestos / cotizaciones
   { re: /\b(propuestas?|ofertas?|presupuestos?|cotizaciones?)\b/g, to: "propuesta" },
+
+  // requisitos
   { re: /\b(requisitos?)\b/g, to: "requisito" },
+
+  // técnico(s)
   { re: /\b(tecnicos?|tecnicas?)\b/g, to: "tecnico" },
+
+  // resumen(es)
   { re: /\b(resumen(?:es)?)\b/g, to: "resumen" },
+
+  // ✅ clave: “resumir reuniones” -> “resumen reunion”
+  { re: /\b(resumir)\b/g, to: "resumen" },
 ];
 
 function normalizeBase(input) {
@@ -239,6 +269,7 @@ function tokensFrom(input) {
   if (!base) return [];
   let tokens = base.split(" ").filter(Boolean).map(singularizeToken);
   tokens = tokens.filter((t) => t && !STOP.has(t));
+
   // uniq manteniendo orden
   const out = [];
   const seen = new Set();
@@ -255,29 +286,30 @@ function tokensFrom(input) {
 function ruleCanonical(tokens) {
   const set = new Set(tokens);
 
+  // 1) Correos (cualquier variante)
   if (set.has("correo")) return "correo";
 
-  // actas/resúmenes de reuniones
+  // 2) Actas/resúmenes de reuniones
   if (set.has("reunion") && (set.has("acta") || set.has("resumen") || set.has("informe"))) {
     return "acta reunion";
   }
 
-  // propuestas comerciales
+  // 3) Propuestas comerciales
   const isCommercial = set.has("comercial") || set.has("venta") || set.has("ventas");
   if (isCommercial && (set.has("propuesta") || set.has("informe"))) {
     return "propuesta comercial";
   }
 
-  // requisitos técnicos
+  // 4) Requisitos técnicos
   if (set.has("requisito") && set.has("tecnico")) return "requisitos tecnicos";
 
-  // informes genérico
+  // 5) Informes genérico
   if (set.has("informe")) return "informe";
 
   return null;
 }
 
-// Fuzzy matching ligero: agrupa conceptos nuevos con existentes por similitud de tokens
+// Fuzzy matching ligero (sin IA pesada) para agrupar tokens muy parecidos
 function jaccard(a, b) {
   let inter = 0;
   for (const x of a) if (b.has(x)) inter += 1;
@@ -286,10 +318,7 @@ function jaccard(a, b) {
 }
 
 function existingCanonKeys() {
-  return new Set([
-    ...state.q1.keys(),
-    ...state.q2.keys(),
-  ]);
+  return new Set([...state.q1.keys(), ...state.q2.keys()]);
 }
 
 function tokenSetFromCanonKey(k) {
@@ -304,7 +333,6 @@ const USE_EMBEDDINGS = String(process.env.USE_EMBEDDINGS || "") === "1";
 let embedderPromise = null;
 
 async function getEmbedder() {
-  // Import dinámico: si NO usas embeddings, esto nunca se carga (más estable en Render)
   if (!embedderPromise) {
     const { pipeline } = await import("@xenova/transformers");
     embedderPromise = pipeline(
@@ -355,11 +383,11 @@ async function canonicalize(userText) {
   const rk = ruleCanonical(toks);
   if (rk) return rk;
 
-  // 2) concepto base (tokens)
+  // 2) concepto base
   const concept = toks.join(" ").trim();
   if (!concept) return null;
 
-  // 3) fuzzy ligero contra claves existentes (mejora agrupación “sin IA pesada”)
+  // 3) fuzzy ligero contra claves existentes (sin embeddings)
   const keys = existingCanonKeys();
   if (keys.size > 0) {
     const newSet = new Set(toks);
@@ -375,13 +403,11 @@ async function canonicalize(userText) {
       }
     }
 
-    // umbral razonable: si comparte bastante “núcleo”, agrupamos
-    if (best && bestScore >= 0.66) {
-      return best;
-    }
+    // ✅ umbral algo más “amable” para agrupar frases cercanas sin ser agresivo
+    if (best && bestScore >= 0.60) return best;
   }
 
-  // 4) embeddings opcionales (IA semántica)
+  // 4) embeddings opcionales (semántica “IA”)
   if (!USE_EMBEDDINGS) return concept;
 
   if (state.canonEmbeddings.has(concept)) return concept;
@@ -474,7 +500,7 @@ io.on("connection", (socket) => {
     console.log("🔴 socket desconectado:", socket.id, reason);
   });
 
-  // ✅ IMPORTANTE: estado inicial SOLO al socket que entra (NO broadcast)
+  // ✅ estado inicial SOLO para el socket que entra (NO broadcast)
   socket.emit("state:update", getStatePayload({ reason: "initial-connection" }));
 
   // Cliente puede pedir estado al reconectar
@@ -492,9 +518,10 @@ io.on("connection", (socket) => {
   const q1Handlers = ["q1:submit", "q1:send", "q1:answers", "q1"];
   const q2Handlers = ["q2:submit", "q2:send", "q2:answer", "q2"];
 
-  // Anti-flood simple por socket (30 personas ok)
+  // Anti-flood simple por socket
   let bucket = 0;
   const refill = setInterval(() => { bucket = 0; }, 2500);
+  refill.unref?.(); // ✅ no bloquea el apagado del proceso
   socket.on("disconnect", () => clearInterval(refill));
 
   for (const ev of q1Handlers) {
@@ -535,10 +562,22 @@ io.on("connection", (socket) => {
 });
 
 // ==============================
-// ARRANQUE
+// ARRANQUE + APAGADO SEGURO
 // ==============================
 process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
 process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
+
+async function gracefulShutdown(signal) {
+  try {
+    console.log(`🟠 ${signal}: guardando estado y cerrando servidor...`);
+    await saveState().catch(() => {});
+  } finally {
+    try { httpServer.close(() => process.exit(0)); } catch { process.exit(0); }
+  }
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 await loadState();
 
