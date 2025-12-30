@@ -1,15 +1,23 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // Socket robusto en Render (websocket + fallback)
+  // ======================
+  // SOCKET (más robusto)
+  // ======================
   const socket = io({
     transports: ["websocket", "polling"],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 600,
+    reconnectionDelayMax: 2500,
+    timeout: 20000, // timeout de conexión inicial
   });
 
   const view = document.body.dataset.view; // "join" o "presenter"
 
   // ======================
-  // UTIL: helpers
+  // UTIL: storage + helpers
   // ======================
-  const LS_KEY = "curvas:lastState:v1";
+  const LS_STATE_KEY = "curvas:lastState:v2";
+  const LS_OUTBOX_KEY = "curvas:outbox:v1";
 
   function safeJsonParse(s, fallback) {
     try {
@@ -31,14 +39,59 @@ document.addEventListener("DOMContentLoaded", () => {
     return q1 + q2 > 0;
   }
 
+  function now() {
+    return Date.now();
+  }
+
   function setSocketStatus(msg) {
-    // En presenter existe #socketStatus (según tu HTML)
     const el = document.getElementById("socketStatus");
     if (el) el.textContent = msg;
   }
 
   // ======================
-  // UTIL: render nube
+  // OUTBOX (cola offline)
+  // ======================
+  function getOutbox() {
+    return safeJsonParse(localStorage.getItem(LS_OUTBOX_KEY), []) || [];
+  }
+
+  function setOutbox(items) {
+    localStorage.setItem(LS_OUTBOX_KEY, JSON.stringify(items));
+  }
+
+  function enqueue(eventName, payload) {
+    const outbox = getOutbox();
+    outbox.push({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      ev: eventName,
+      payload,
+      ts: Date.now(),
+    });
+    // límite para no crecer infinito si alguien está sin red
+    while (outbox.length > 50) outbox.shift();
+    setOutbox(outbox);
+  }
+
+  function drainOutbox() {
+    if (!socket.connected) return;
+
+    const outbox = getOutbox();
+    if (!outbox.length) return;
+
+    // enviamos en orden; si algo falla, seguimos (best-effort)
+    const remaining = [];
+    for (const msg of outbox) {
+      try {
+        socket.emit(msg.ev, msg.payload, () => {});
+      } catch {
+        remaining.push(msg);
+      }
+    }
+    setOutbox(remaining);
+  }
+
+  // ======================
+  // RENDER NUBE (mejor escalado)
   // ======================
   function renderCloud(container, items) {
     if (!container) return;
@@ -52,52 +105,78 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const max = items[0]?.count || 1;
+    // items viene ordenado desc por count (del server)
+    const max = Number(items[0]?.count || 1);
+    const n = items.length;
+
+    // Ajuste dinámico para que NO se “coma” la pantalla si hay muchas palabras
+    const minSize = 14;
+    const maxSize = n > 40 ? 46 : n > 25 ? 54 : 64;
+
+    const logMax = Math.log(max + 1);
 
     items.forEach(({ text, count }, idx) => {
       const span = document.createElement("span");
       span.className = "cloud-word";
       span.textContent = String(text || "").toUpperCase();
 
-      // Tamaño proporcional (cuanto más repetida, más grande)
-      const size = 16 + (Number(count || 0) / max) * 48;
+      const c = Math.max(1, Number(count || 1));
+      // log scaling: separa bien 1,2,3… sin que “explote” el top
+      const t = logMax > 0 ? Math.log(c + 1) / logMax : 0;
+      const size = Math.round(minSize + t * (maxSize - minSize));
       span.style.fontSize = `${size}px`;
 
-      // ✅ Estética: rosa NUNSYS + menos “mazo” que negro/bold
+      // estética (rosa + menos pesado)
       span.style.color = "var(--pink)";
       span.style.fontWeight = "650";
       span.style.fontFamily =
         "ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
 
-      // ✅ Top visual un poquito más destacado
+      // micro-destacado del #1
       if (idx === 0) {
         span.style.background = "rgba(255,74,167,.14)";
         span.style.borderColor = "rgba(255,74,167,.38)";
       }
 
+      // suaviza cambios al actualizar en vivo
+      span.style.transition = "font-size 220ms ease, transform 220ms ease";
       container.appendChild(span);
     });
   }
 
   // ======================
-  // SOCKET: estado conexión (debug real)
+  // SOCKET: estados conexión
   // ======================
   let lastDisconnectAt = 0;
+  let lastConnectAt = 0;
 
   socket.on("connect", () => {
+    lastConnectAt = now();
     console.log("🟢 Socket conectado:", socket.id);
     setSocketStatus("🟢 Conectado");
+    drainOutbox();
   });
 
   socket.on("disconnect", (reason) => {
     console.log("🔴 Socket desconectado:", reason);
-    lastDisconnectAt = Date.now();
+    lastDisconnectAt = now();
     setSocketStatus("🔴 Desconectado");
   });
 
   socket.on("connect_error", (err) => {
+    // IMPORTANTE: connect_error a veces no dispara disconnect, pero ES un corte real
     console.log("⚠️ connect_error:", err?.message || err);
+    lastDisconnectAt = now();
     setSocketStatus("⚠️ Error de conexión");
+  });
+
+  socket.io.on("reconnect_attempt", () => {
+    setSocketStatus("🟡 Reintentando conexión…");
+  });
+
+  socket.io.on("reconnect", () => {
+    setSocketStatus("🟢 Conectado");
+    drainOutbox();
   });
 
   // ======================
@@ -136,23 +215,21 @@ document.addEventListener("DOMContentLoaded", () => {
       if (q1Input) q1Input.value = "";
     }
 
-    function emitOptimistic(eventName, payload, btn, onSuccess) {
-      // Si no hay conexión, lo dejamos claro
+    function emitReliable(eventName, payload, btn, onSuccess) {
+      // si no hay conexión: ENCOLA y UX OK (no error)
       if (!socket.connected) {
-        console.log(`❌ No conectado: no se puede enviar ${eventName}`);
-        flashBtn(btn, "Sin conexión");
+        enqueue(eventName, payload);
+        flashBtn(btn, "En cola ✓");
+        onSuccess?.();
         return;
       }
 
       let done = false;
 
-      // ✅ IMPORTANTE:
-      // Aunque el server ya responde ACK inmediato, si algo raro ocurre en móvil/red,
-      // NO queremos falsos “Error envío”. Si no vuelve callback rápido, asumimos OK.
+      // si el ACK no vuelve (red móvil), no castigamos la UX
       const optimisticTimer = setTimeout(() => {
         if (done) return;
         done = true;
-        console.log(`⚠️ ACK tardío/no devuelto en ${eventName} → asumimos enviado`);
         flashBtn(btn, "Enviado ✓");
         onSuccess?.();
       }, 900);
@@ -164,19 +241,17 @@ document.addEventListener("DOMContentLoaded", () => {
           clearTimeout(optimisticTimer);
 
           if (res && res.ok === false) {
-            console.log(`❌ Server respondió ok:false en ${eventName}:`, res);
             flashBtn(btn, "Error envío");
             return;
           }
 
-          console.log(`✅ ${eventName} enviado OK:`, res);
           flashBtn(btn, "Enviado ✓");
           onSuccess?.();
         });
       } catch (e) {
-        console.log(`⚠️ Emit error en ${eventName}:`, e);
         clearTimeout(optimisticTimer);
-        flashBtn(btn, "Enviado ✓");
+        enqueue(eventName, payload);
+        flashBtn(btn, "En cola ✓");
         onSuccess?.();
       }
     }
@@ -191,7 +266,6 @@ document.addEventListener("DOMContentLoaded", () => {
       q1Input?.focus();
     });
 
-    // Enter = añadir (móvil)
     q1Input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -216,15 +290,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const payload = { items: [...q1Items] };
 
-      emitOptimistic("q1:submit", payload, q1Send, () => {
-        // ✅ UX: al enviar, desaparecen los chips (como querías)
+      emitReliable("q1:submit", payload, q1Send, () => {
+        // UX: desaparecen chips al enviar (o al encolar)
         clearQ1UI();
 
         sendingQ1 = false;
         if (q1Send) q1Send.disabled = false;
       });
 
-      // seguridad extra por si algo rarísimo bloquea
       setTimeout(() => {
         sendingQ1 = false;
         if (q1Send) q1Send.disabled = false;
@@ -243,8 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const payload = { item: v };
 
-      emitOptimistic("q2:submit", payload, q2Send, () => {
-        // ✅ UX: al enviar, limpiamos input
+      emitReliable("q2:submit", payload, q2Send, () => {
         if (q2Input) q2Input.value = "";
 
         sendingQ2 = false;
@@ -266,7 +338,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalCloud = document.getElementById("modalCloud");
     const cloudTitle = document.getElementById("cloudTitle");
 
-    // Zoom modal elements (según tu presenter.html)
     const zoomBtn = document.getElementById("zoomBtn");
     const zoomModal = document.getElementById("zoomModal");
     const modalClose = document.getElementById("modalClose");
@@ -274,11 +345,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalTitle = document.getElementById("modalTitle");
 
     let current = "q1";
-    let lastState =
-      safeJsonParse(localStorage.getItem(LS_KEY), null) || { q1: [], q2: [] };
 
-    // Para evitar “borrado fantasma”
-    let resetRequestedAt = 0;
+    // arrancamos con cache (evita “pantalla vacía”)
+    let lastState =
+      safeJsonParse(localStorage.getItem(LS_STATE_KEY), null) || { q1: [], q2: [] };
+
+    // “ventana” donde SÍ permitimos estado vacío (solo tras reset)
+    let allowEmptyUntil = 0;
 
     function currentTitle() {
       return current === "q1"
@@ -296,32 +369,36 @@ document.addEventListener("DOMContentLoaded", () => {
       if (modalTitle) modalTitle.textContent = title;
     }
 
-    // Pintar inmediatamente lo cacheado (si hay) para evitar parpadeos
     refresh();
 
     socket.on("state:update", (state) => {
-      console.log("📥 state:update recibido:", state);
-
       const incoming = state || { q1: [], q2: [] };
+
       const incomingEmpty = isEmptyState(incoming);
       const weHaveData = hasAnyData(lastState);
 
-      // ✅ Si llega vacío “de golpe” y NO has hecho reset,
-      // y además hubo desconexión reciente, NO borramos.
-      const recentlyDisconnected = Date.now() - lastDisconnectAt < 15000;
-      const recentlyReset = Date.now() - resetRequestedAt < 8000;
+      const recentlyDisconnected = now() - lastDisconnectAt < 30000; // más generoso
+      const allowEmpty = now() < allowEmptyUntil;
 
-      if (incomingEmpty && weHaveData && !recentlyReset && recentlyDisconnected) {
-        console.log(
-          "⚠️ Estado vacío tras desconexión reciente → mantenemos último estado (anti-borrado)."
-        );
+      // ✅ Anti-borrado REAL:
+      // Si llega vacío y nosotros ya teníamos datos,
+      // y NO estamos en ventana de “permitir vacío” (reset),
+      // y además hubo problemas de conexión → IGNORAMOS el vacío.
+      if (incomingEmpty && weHaveData && !allowEmpty && recentlyDisconnected) {
+        console.log("⚠️ Ignoramos estado vacío tras corte/reconexión (anti-borrado).");
         setSocketStatus("🟡 Conectado (mostrando últimos datos)");
         refresh();
         return;
       }
 
+      // ✅ Si llega vacío y NO es reset, pero también hubo corte, preferimos mantener
+      if (incomingEmpty && weHaveData && !allowEmpty && recentlyDisconnected) {
+        refresh();
+        return;
+      }
+
       lastState = incoming;
-      localStorage.setItem(LS_KEY, JSON.stringify(lastState));
+      localStorage.setItem(LS_STATE_KEY, JSON.stringify(lastState));
       refresh();
     });
 
@@ -335,12 +412,25 @@ document.addEventListener("DOMContentLoaded", () => {
       refresh();
     });
 
-    // RESET con “permitir vacío”
+    // RESET: borra de verdad en UI + cache, y permite estado vacío del server
     document.getElementById("resetBtn")?.addEventListener("click", () => {
       const btn = document.getElementById("resetBtn");
-      if (!socket.connected) return;
 
-      resetRequestedAt = Date.now();
+      // ventana donde aceptamos vacío (porque lo hemos pedido nosotros)
+      allowEmptyUntil = now() + 12000;
+
+      // ✅ borrar local inmediatamente (UX)
+      lastState = { q1: [], q2: [] };
+      localStorage.setItem(LS_STATE_KEY, JSON.stringify(lastState));
+      refresh();
+
+      if (!socket.connected) {
+        if (btn) {
+          btn.textContent = "RESET ✓";
+          setTimeout(() => btn && (btn.textContent = "RESET"), 900);
+        }
+        return;
+      }
 
       let done = false;
       const optimisticTimer = setTimeout(() => {
@@ -355,13 +445,12 @@ document.addEventListener("DOMContentLoaded", () => {
         done = true;
         clearTimeout(optimisticTimer);
 
-        console.log("✅ Reset response:", res);
         if (btn) btn.textContent = "RESET ✓";
         setTimeout(() => btn && (btn.textContent = "RESET"), 900);
       });
     });
 
-    // ✅ ZOOM: abrir/cerrar modal (robusto)
+    // ZOOM modal
     function openZoom() {
       if (!zoomModal) return;
       zoomModal.classList.add("open");
@@ -378,7 +467,6 @@ document.addEventListener("DOMContentLoaded", () => {
     modalClose?.addEventListener("click", () => closeZoom());
     modalX?.addEventListener("click", () => closeZoom());
 
-    // Cerrar al clicar fuera del panel (backdrop)
     zoomModal?.addEventListener("click", (e) => {
       if (e.target === zoomModal) closeZoom();
     });
