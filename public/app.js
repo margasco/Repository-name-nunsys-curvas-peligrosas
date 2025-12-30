@@ -43,7 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return Date.now();
   }
 
-  // ✅ FIX: escribe en presenter (#socketStatus) y en join (#joinSocketStatus)
+  // ✅ escribe en presenter (#socketStatus) y en join (#joinSocketStatus)
   function setSocketStatus(msg) {
     const elPresenter = document.getElementById("socketStatus");
     if (elPresenter) elPresenter.textContent = msg;
@@ -75,6 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setOutbox(outbox);
   }
 
+  // ✅ drenado FIFO más seguro (no borra toda la cola "a ciegas")
   function drainOutbox() {
     if (!socket.connected) return;
 
@@ -82,14 +83,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!outbox.length) return;
 
     const remaining = [];
+
     for (const msg of outbox) {
       try {
-        // envío best-effort: si no lanza error, lo damos por enviado
         socket.emit(msg.ev, msg.payload, () => {});
+        // si no ha lanzado excepción, lo damos por enviado
       } catch {
         remaining.push(msg);
       }
     }
+
     setOutbox(remaining);
   }
 
@@ -254,6 +257,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    // ✅ Añadir chip manual
     q1Add?.addEventListener("click", () => {
       const v = q1Input?.value?.trim() || "";
       if (!v) return;
@@ -264,6 +268,7 @@ document.addEventListener("DOMContentLoaded", () => {
       q1Input?.focus();
     });
 
+    // Enter en Q1 = Añadir (como ya estaba)
     q1Input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -271,6 +276,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
+    // Enter en Q2 = Enviar
     q2Input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -278,17 +284,32 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
+    // ✅ FIX CRÍTICO:
+    // ENVIAR Q1 debe funcionar aunque NO hayas pulsado "Añadir".
+    // Si no hay chips, usa el valor del input como única tarea.
     q1Send?.addEventListener("click", () => {
       if (sendingQ1) return;
-      if (q1Items.length === 0) return;
+
+      const direct = q1Input?.value?.trim() || "";
+
+      // caso A: hay chips
+      const hasChips = q1Items.length > 0;
+
+      // caso B: no hay chips pero hay input escrito
+      if (!hasChips && !direct) return;
+
+      // si no hay chips y hay input, lo convertimos en envío de 1 item
+      const itemsToSend = hasChips ? [...q1Items] : [direct];
 
       sendingQ1 = true;
       if (q1Send) q1Send.disabled = true;
 
-      const payload = { items: [...q1Items] };
+      const payload = { items: itemsToSend };
 
       emitReliable("q1:submit", payload, q1Send, () => {
+        // UX: limpiamos tanto chips como input
         clearQ1UI();
+
         sendingQ1 = false;
         if (q1Send) q1Send.disabled = false;
       });
@@ -299,6 +320,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 2000);
     });
 
+    // ENVIAR Q2
     q2Send?.addEventListener("click", () => {
       if (sendingQ2) return;
 
@@ -342,6 +364,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let lastState =
       safeJsonParse(localStorage.getItem(LS_STATE_KEY), null) || { q1: [], q2: [] };
 
+    // ventana donde SÍ permitimos vacío (tras reset)
     let allowEmptyUntil = 0;
 
     function currentTitle() {
@@ -363,16 +386,21 @@ document.addEventListener("DOMContentLoaded", () => {
     refresh();
 
     socket.on("state:update", (state) => {
-      // el server puede enviar {meta, q1, q2}. Nosotros solo miramos q1/q2.
-      const incoming = state || { q1: [], q2: [] };
+      // soporta {meta, q1, q2} o {q1, q2}
+      const incoming = state && (state.q1 || state.q2) ? state : { q1: [], q2: [] };
 
-      const incomingEmpty = isEmptyState(incoming);
+      const incomingQ1 = Array.isArray(incoming.q1) ? incoming.q1 : [];
+      const incomingQ2 = Array.isArray(incoming.q2) ? incoming.q2 : [];
+
+      const normalizedIncoming = { q1: incomingQ1, q2: incomingQ2 };
+
+      const incomingEmpty = isEmptyState(normalizedIncoming);
       const weHaveData = hasAnyData(lastState);
 
       const recentlyDisconnected = now() - lastDisconnectAt < 30000;
       const allowEmpty = now() < allowEmptyUntil;
 
-      // ✅ FIX: anti-borrado limpio (sin if duplicado)
+      // ✅ anti-borrado
       if (incomingEmpty && weHaveData && !allowEmpty && recentlyDisconnected) {
         console.log("⚠️ Ignoramos estado vacío tras corte/reconexión (anti-borrado).");
         setSocketStatus("🟡 Conectado (mostrando últimos datos)");
@@ -380,7 +408,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      lastState = incoming;
+      lastState = normalizedIncoming;
       localStorage.setItem(LS_STATE_KEY, JSON.stringify(lastState));
       refresh();
     });
@@ -400,7 +428,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       allowEmptyUntil = now() + 12000;
 
-      // ✅ UX: borrado inmediato local
+      // UX: borrado inmediato local
       lastState = { q1: [], q2: [] };
       localStorage.setItem(LS_STATE_KEY, JSON.stringify(lastState));
       refresh();
