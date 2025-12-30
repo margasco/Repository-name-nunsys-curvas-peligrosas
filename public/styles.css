@@ -176,9 +176,7 @@ input:focus{
 
 .chip-x:active{ transform: scale(.98); }
 
-.chip-x:focus{
-  outline:none;
-}
+.chip-x:focus{ outline:none; }
 
 .chip-x:focus-visible{
   box-shadow: 0 0 0 4px rgba(255,74,167,.16);
@@ -201,10 +199,6 @@ input:focus{
   min-width:0;
 }
 
-/* ✅ IMPORTANTÍSIMO:
-   Antes el QR era una columna fija (420px) y robaba protagonismo.
-   Ahora el grid principal del presenter es SOLO la nube (1 columna),
-   y el QR pasa a "popup" flotante (más abajo). */
 .presenter-grid{
   display:grid;
   grid-template-columns: minmax(0, 1fr);
@@ -336,12 +330,15 @@ input:focus{
 }
 
 /* =========================
-   ✅ CLOUD WORD + CONTADOR
+   ✅ CLOUD WORD + CONTADOR (abajo-derecha)
    ========================= */
 .cloud-word{
   position: relative;          /* ✅ para badge */
   padding: 6px 10px;
-  padding-right: 34px;         /* ✅ hueco para badge */
+
+  /* ✅ hueco para badge abajo-derecha (evita que pise letras) */
+  padding-right: 30px;
+  padding-bottom: 16px;
 
   color: var(--pink);
   font-weight: 650;
@@ -359,8 +356,10 @@ input:focus{
 /* Badge si lo pintamos con <span class="cloud-count">12</span> */
 .cloud-count{
   position:absolute;
-  top:-7px;
-  right:-7px;
+
+  /* ✅ abajo-derecha */
+  right: -7px;
+  bottom: -7px;
 
   min-width: 22px;
   height: 22px;
@@ -383,12 +382,14 @@ input:focus{
   pointer-events:none; /* ✅ no molesta al scroll/click */
 }
 
-/* Fallback: si en JS prefieres setear data-count="12" en vez de crear span */
+/* Fallback: si en JS prefieres setear data-count="12" */
 .cloud-word[data-count]::after{
   content: attr(data-count);
   position:absolute;
-  top:-7px;
-  right:-7px;
+
+  /* ✅ abajo-derecha */
+  right: -7px;
+  bottom: -7px;
 
   min-width: 22px;
   height: 22px;
@@ -415,7 +416,8 @@ input:focus{
 .word{
   position: relative;
   padding: 6px 10px;
-  padding-right: 34px;
+  padding-right: 30px;
+  padding-bottom: 16px;
 
   color: var(--pink);
   font-weight: 650;
@@ -554,6 +556,11 @@ input:focus{
   /* ✅ chip X un pelín más grande en táctil */
   .chip{ padding-right: 42px; }
   .chip-x{ width:24px; height:24px; }
+
+  /* ✅ badge un pelín más compacto en móvil */
+  .cloud-word{ padding-bottom: 14px; padding-right: 28px; }
+  .cloud-count,
+  .cloud-word[data-count]::after{ height:20px; min-width:20px; font-size:10px; }
 }
 
 @media (max-width: 1100px){
