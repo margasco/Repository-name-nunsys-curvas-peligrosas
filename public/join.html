@@ -6,7 +6,7 @@
   <title>DETECTANDO CURVAS PELIGROSAS · Join</title>
 
   <!-- ✅ evita caché (sube el ?v= cuando despliegues) -->
-  <link rel="stylesheet" href="/styles.css?v=4" />
+  <link rel="stylesheet" href="/styles.css?v=5" />
 </head>
 
 <body data-view="join">
@@ -24,31 +24,41 @@
     <main class="grid">
       <section class="card">
         <h2>¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
-        <p>Añade una o varias tareas (texto libre). La IA agrupará variantes similares.</p>
+        <p id="q1Help">Añade una o varias tareas (texto libre). La IA agrupará variantes similares.</p>
 
         <div class="row">
           <input
             id="q1Input"
             type="text"
             autocomplete="off"
+            autocapitalize="sentences"
+            autocorrect="off"
+            spellcheck="false"
+            inputmode="text"
+            aria-describedby="q1Help"
             placeholder="Ej: responder correos, preparar informes, reuniones..."
           />
           <button id="q1Add" class="btn ghost" type="button">Añadir</button>
           <button id="q1Send" class="btn" type="button">Enviar</button>
         </div>
 
-        <div id="q1Chips" class="chips"></div>
+        <div id="q1Chips" class="chips" aria-live="polite"></div>
       </section>
 
       <section class="card">
         <h2>¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?</h2>
-        <p>Solo una (texto libre).</p>
+        <p id="q2Help">Solo una (texto libre).</p>
 
         <div class="row">
           <input
             id="q2Input"
             type="text"
             autocomplete="off"
+            autocapitalize="sentences"
+            autocorrect="off"
+            spellcheck="false"
+            inputmode="text"
+            aria-describedby="q2Help"
             placeholder="Ej: seguimiento de incidencias..."
           />
           <button id="q2Send" class="btn" type="button">Enviar</button>
@@ -60,6 +70,6 @@
   <script src="/socket.io/socket.io.js"></script>
 
   <!-- ✅ evita que un móvil use app.js antiguo -->
-  <script src="/app.js?v=4"></script>
+  <script src="/app.js?v=5"></script>
 </body>
 </html>
