@@ -43,9 +43,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return Date.now();
   }
 
+  // ✅ FIX: escribe en presenter (#socketStatus) y en join (#joinSocketStatus)
   function setSocketStatus(msg) {
-    const el = document.getElementById("socketStatus");
-    if (el) el.textContent = msg;
+    const elPresenter = document.getElementById("socketStatus");
+    if (elPresenter) elPresenter.textContent = msg;
+
+    const elJoin = document.getElementById("joinSocketStatus");
+    if (elJoin) elJoin.textContent = msg;
   }
 
   // ======================
@@ -67,7 +71,6 @@ document.addEventListener("DOMContentLoaded", () => {
       payload,
       ts: Date.now(),
     });
-    // límite para no crecer infinito si alguien está sin red
     while (outbox.length > 50) outbox.shift();
     setOutbox(outbox);
   }
@@ -78,10 +81,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const outbox = getOutbox();
     if (!outbox.length) return;
 
-    // enviamos en orden; si algo falla, seguimos (best-effort)
     const remaining = [];
     for (const msg of outbox) {
       try {
+        // envío best-effort: si no lanza error, lo damos por enviado
         socket.emit(msg.ev, msg.payload, () => {});
       } catch {
         remaining.push(msg);
@@ -91,7 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ======================
-  // RENDER NUBE (mejor escalado)
+  // RENDER NUBE (escalado pro)
   // ======================
   function renderCloud(container, items) {
     if (!container) return;
@@ -109,7 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const max = Number(items[0]?.count || 1);
     const n = items.length;
 
-    // Ajuste dinámico para que NO se “coma” la pantalla si hay muchas palabras
+    // ✅ Evita que “reviente” si hay muchísimas palabras
     const minSize = 14;
     const maxSize = n > 40 ? 46 : n > 25 ? 54 : 64;
 
@@ -121,24 +124,22 @@ document.addEventListener("DOMContentLoaded", () => {
       span.textContent = String(text || "").toUpperCase();
 
       const c = Math.max(1, Number(count || 1));
-      // log scaling: separa bien 1,2,3… sin que “explote” el top
+
+      // ✅ Escalado logarítmico: diferencia 1/2/3/4... pero sin gigantismos
       const t = logMax > 0 ? Math.log(c + 1) / logMax : 0;
       const size = Math.round(minSize + t * (maxSize - minSize));
       span.style.fontSize = `${size}px`;
 
-      // estética (rosa + menos pesado)
       span.style.color = "var(--pink)";
       span.style.fontWeight = "650";
       span.style.fontFamily =
         "ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
 
-      // micro-destacado del #1
       if (idx === 0) {
         span.style.background = "rgba(255,74,167,.14)";
         span.style.borderColor = "rgba(255,74,167,.38)";
       }
 
-      // suaviza cambios al actualizar en vivo
       span.style.transition = "font-size 220ms ease, transform 220ms ease";
       container.appendChild(span);
     });
@@ -148,10 +149,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // SOCKET: estados conexión
   // ======================
   let lastDisconnectAt = 0;
-  let lastConnectAt = 0;
 
   socket.on("connect", () => {
-    lastConnectAt = now();
     console.log("🟢 Socket conectado:", socket.id);
     setSocketStatus("🟢 Conectado");
     drainOutbox();
@@ -164,7 +163,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   socket.on("connect_error", (err) => {
-    // IMPORTANTE: connect_error a veces no dispara disconnect, pero ES un corte real
     console.log("⚠️ connect_error:", err?.message || err);
     lastDisconnectAt = now();
     setSocketStatus("⚠️ Error de conexión");
@@ -216,7 +214,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function emitReliable(eventName, payload, btn, onSuccess) {
-      // si no hay conexión: ENCOLA y UX OK (no error)
+      // si no hay conexión: ENCOLA y UX OK
       if (!socket.connected) {
         enqueue(eventName, payload);
         flashBtn(btn, "En cola ✓");
@@ -226,7 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       let done = false;
 
-      // si el ACK no vuelve (red móvil), no castigamos la UX
+      // si el ACK no vuelve (red móvil), no castigamos UX
       const optimisticTimer = setTimeout(() => {
         if (done) return;
         done = true;
@@ -280,7 +278,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // ENVIAR Q1
     q1Send?.addEventListener("click", () => {
       if (sendingQ1) return;
       if (q1Items.length === 0) return;
@@ -291,9 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const payload = { items: [...q1Items] };
 
       emitReliable("q1:submit", payload, q1Send, () => {
-        // UX: desaparecen chips al enviar (o al encolar)
         clearQ1UI();
-
         sendingQ1 = false;
         if (q1Send) q1Send.disabled = false;
       });
@@ -304,7 +299,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 2000);
     });
 
-    // ENVIAR Q2
     q2Send?.addEventListener("click", () => {
       if (sendingQ2) return;
 
@@ -318,7 +312,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       emitReliable("q2:submit", payload, q2Send, () => {
         if (q2Input) q2Input.value = "";
-
         sendingQ2 = false;
         if (q2Send) q2Send.disabled = false;
       });
@@ -346,11 +339,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let current = "q1";
 
-    // arrancamos con cache (evita “pantalla vacía”)
     let lastState =
       safeJsonParse(localStorage.getItem(LS_STATE_KEY), null) || { q1: [], q2: [] };
 
-    // “ventana” donde SÍ permitimos estado vacío (solo tras reset)
     let allowEmptyUntil = 0;
 
     function currentTitle() {
@@ -372,27 +363,19 @@ document.addEventListener("DOMContentLoaded", () => {
     refresh();
 
     socket.on("state:update", (state) => {
+      // el server puede enviar {meta, q1, q2}. Nosotros solo miramos q1/q2.
       const incoming = state || { q1: [], q2: [] };
 
       const incomingEmpty = isEmptyState(incoming);
       const weHaveData = hasAnyData(lastState);
 
-      const recentlyDisconnected = now() - lastDisconnectAt < 30000; // más generoso
+      const recentlyDisconnected = now() - lastDisconnectAt < 30000;
       const allowEmpty = now() < allowEmptyUntil;
 
-      // ✅ Anti-borrado REAL:
-      // Si llega vacío y nosotros ya teníamos datos,
-      // y NO estamos en ventana de “permitir vacío” (reset),
-      // y además hubo problemas de conexión → IGNORAMOS el vacío.
+      // ✅ FIX: anti-borrado limpio (sin if duplicado)
       if (incomingEmpty && weHaveData && !allowEmpty && recentlyDisconnected) {
         console.log("⚠️ Ignoramos estado vacío tras corte/reconexión (anti-borrado).");
         setSocketStatus("🟡 Conectado (mostrando últimos datos)");
-        refresh();
-        return;
-      }
-
-      // ✅ Si llega vacío y NO es reset, pero también hubo corte, preferimos mantener
-      if (incomingEmpty && weHaveData && !allowEmpty && recentlyDisconnected) {
         refresh();
         return;
       }
@@ -412,14 +395,12 @@ document.addEventListener("DOMContentLoaded", () => {
       refresh();
     });
 
-    // RESET: borra de verdad en UI + cache, y permite estado vacío del server
     document.getElementById("resetBtn")?.addEventListener("click", () => {
       const btn = document.getElementById("resetBtn");
 
-      // ventana donde aceptamos vacío (porque lo hemos pedido nosotros)
       allowEmptyUntil = now() + 12000;
 
-      // ✅ borrar local inmediatamente (UX)
+      // ✅ UX: borrado inmediato local
       lastState = { q1: [], q2: [] };
       localStorage.setItem(LS_STATE_KEY, JSON.stringify(lastState));
       refresh();
@@ -440,7 +421,7 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => btn && (btn.textContent = "RESET"), 900);
       }, 900);
 
-      socket.emit("admin:reset", (res) => {
+      socket.emit("admin:reset", () => {
         if (done) return;
         done = true;
         clearTimeout(optimisticTimer);
@@ -450,7 +431,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    // ZOOM modal
     function openZoom() {
       if (!zoomModal) return;
       zoomModal.classList.add("open");
