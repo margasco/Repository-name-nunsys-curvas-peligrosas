@@ -20,9 +20,6 @@ body{
 }
 
 .wrap{max-width:1100px;margin:0 auto;padding:28px}
-h1{margin:0;font-size:44px;letter-spacing:.5px}
-h2{margin:0 0 10px;font-size:28px}
-p{margin:0 0 16px;color:var(--muted);line-height:1.35}
 
 .top{
   display:flex;
@@ -30,6 +27,15 @@ p{margin:0 0 16px;color:var(--muted);line-height:1.35}
   justify-content:space-between;
   gap:16px;
   margin-bottom:18px;
+}
+
+.title{
+  margin:0;
+  font-weight:900;
+  letter-spacing:1px;
+  font-size: clamp(30px, 3.2vw, 46px);
+  line-height:1.05;
+  white-space: nowrap;         /* ✅ no partir en dos líneas en pantallas grandes */
 }
 
 .top-right{
@@ -42,15 +48,9 @@ p{margin:0 0 16px;color:var(--muted);line-height:1.35}
   border:1px solid var(--line);
   padding:8px 14px;
   border-radius:999px;
-  font-weight:700;
+  font-weight:800;
   color:#5b5f6a;
   background:#fff;
-}
-
-.grid{
-  display:grid;
-  grid-template-columns: 1fr;
-  gap:18px;
 }
 
 .card{
@@ -61,11 +61,17 @@ p{margin:0 0 16px;color:var(--muted);line-height:1.35}
   box-shadow: var(--shadow);
 }
 
-.row{
-  display:flex;
-  gap:12px;
-  align-items:center;
+h2{
+  margin:0 0 10px;
+  font-size: 26px;
+  font-weight:900;
+  letter-spacing:.3px;
+  white-space: nowrap; /* ✅ evita saltos */
 }
+
+p{margin:0 0 16px;color:var(--muted);line-height:1.35}
+
+.row{display:flex;gap:12px;align-items:center}
 
 input{
   flex:1;
@@ -88,12 +94,10 @@ input:focus{
   border:none;
   border-radius:16px;
   cursor:pointer;
-  font-weight:800;
+  font-weight:900;
   background: var(--pink);
   color:white;
-  transition: transform .05s ease, opacity .15s ease;
 }
-.btn:active{transform: scale(.98)}
 .btn.ghost{
   background: transparent;
   color: var(--pink);
@@ -107,33 +111,21 @@ input:focus{
   height:36px;
   border-radius:12px;
   padding:0 12px;
-  font-weight:800;
   font-size:13px;
 }
 
-.chips{
-  margin-top:14px;
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-}
+.chips{margin-top:14px;display:flex;flex-wrap:wrap;gap:10px}
 .chip{
-  display:inline-flex;
-  align-items:center;
-  gap:10px;
-  padding:10px 12px;
-  border-radius:999px;
+  display:inline-flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:999px;
   background: rgba(255,74,167,.10);
   border:1px solid rgba(255,74,167,.25);
-  font-weight:700;
+  font-weight:800;
 }
 .chip-x{
-  border:none;
-  background: rgba(0,0,0,.08);
-  width:22px;height:22px;
-  border-radius:999px;
-  cursor:pointer;
-  font-weight:900;
+  border:none;background: rgba(0,0,0,.08);
+  width:22px;height:22px;border-radius:999px;
+  cursor:pointer;font-weight:900;
 }
 
 /* ---------------- Presenter layout ---------------- */
@@ -151,20 +143,10 @@ input:focus{
 
 .presenter-grid{
   display:grid;
-  grid-template-columns: 360px 1fr;
-  grid-auto-rows: minmax(220px, auto);
+  grid-template-columns: 420px 1fr;
   gap:18px;
+  align-items:start;
 }
-
-/* modos: comparar / q1 / q2 */
-.presenter-grid.mode-compare #cardQ1,
-.presenter-grid.mode-compare #cardQ2{
-  display:block;
-}
-.presenter-grid.mode-q1 #cardQ2{display:none;}
-.presenter-grid.mode-q1{grid-template-columns: 360px 1fr;}
-.presenter-grid.mode-q2 #cardQ1{display:none;}
-.presenter-grid.mode-q2{grid-template-columns: 360px 1fr;}
 
 .cardHead{
   display:flex;
@@ -174,62 +156,7 @@ input:focus{
   margin-bottom:10px;
 }
 
-/* QR */
-.card-qr .qrBox{
-  width:260px;
-  height:260px;
-  display:grid;
-  place-items:center;
-  border-radius:18px;
-  border:2px dashed rgba(255,74,167,.35);
-  background: linear-gradient(180deg, rgba(255,74,167,.05), rgba(255,74,167,.02));
-  margin: 10px 0 10px;
-}
-.muted{color:var(--muted)}
-.tiny{font-size:12px;opacity:.9}
-
-/* nube */
-.cloud{
-  height: 260px;
-  border-radius:18px;
-  border:2px dashed rgba(255,74,167,.30);
-  padding:14px;
-  overflow:hidden;
-  background:
-    radial-gradient(1200px 220px at 15% 0%, rgba(255,74,167,.10), transparent 60%),
-    radial-gradient(800px 200px at 80% 10%, rgba(255,139,208,.10), transparent 55%),
-    #fff;
-  display:flex;
-  flex-wrap:wrap;
-  align-content:flex-start;
-  gap:10px 14px;
-}
-
-.cloud-empty{
-  color: var(--muted);
-  font-weight:700;
-}
-
-.word{
-  font-weight:900;
-  letter-spacing:.6px;
-  line-height:1;
-  padding:6px 8px;
-  border-radius:14px;
-  background: rgba(255,74,167,.08);
-  border: 1px solid rgba(255,74,167,.20);
-  transform: translateZ(0);
-  white-space:nowrap;
-}
-.word.top{
-  background: rgba(255,74,167,.14);
-  border-color: rgba(255,74,167,.35);
-}
-.word.low{
-  opacity:.85;
-}
-
-/* Segment control */
+/* Segment selector */
 .segmented{
   display:flex;
   background:#fff;
@@ -246,91 +173,88 @@ input:focus{
   cursor:pointer;
   font-weight:900;
   color:#5b5f6a;
+  white-space: nowrap;
 }
 .seg.on{
-  background: rgba(255,74,167,.12);
+  background: rgba(255,74,167,.14);
   color: var(--pink);
 }
 
-/* ---------------- Track (circuito) ---------------- */
+/* QR */
+.card-qr .qrBox{
+  width:100%;
+  height:280px;
+  display:grid;
+  place-items:center;
+  border-radius:18px;
+  border:2px dashed rgba(255,74,167,.35);
+  background: linear-gradient(180deg, rgba(255,74,167,.05), rgba(255,74,167,.02));
+  margin: 10px 0 10px;
+}
+#qrImg{
+  width:240px;
+  height:240px;
+  image-rendering: pixelated;
+}
+
+.muted{color:var(--muted)}
+.tiny{font-size:12px;opacity:.9}
+
+/* Cloud */
+.cloud{
+  height: 360px;
+  border-radius:18px;
+  border:2px dashed rgba(255,74,167,.30);
+  padding:16px;
+  overflow:hidden;
+  background:
+    radial-gradient(900px 260px at 15% 0%, rgba(255,74,167,.10), transparent 60%),
+    radial-gradient(700px 220px at 80% 10%, rgba(255,139,208,.10), transparent 55%),
+    #fff;
+  display:flex;
+  flex-wrap:wrap;
+  align-content:flex-start;
+  gap:10px 14px;
+}
+
+.cloud--big{
+  height: calc(100vh - 180px);
+  overflow:auto;
+}
+
+.cloud-empty{color:var(--muted);font-weight:800}
+
+.word{
+  font-weight:900;
+  letter-spacing:.7px;
+  line-height:1;
+  padding:6px 9px;
+  border-radius:14px;
+  background: rgba(255,74,167,.08);
+  border: 1px solid rgba(255,74,167,.20);
+  white-space:nowrap;
+}
+.word.top{
+  background: rgba(255,74,167,.16);
+  border-color: rgba(255,74,167,.40);
+}
+
+/* ---------------- Track: imagen "circuito" embebida (sin mareo) ---------------- */
 
 .track{
   position:relative;
   border-left: 1px solid var(--line);
-  background: #0c0d12;
+  background:#0b0c12;
   overflow:hidden;
 }
 
-/* “carretera” + líneas + curvas sugeridas */
-.track-inner{
+.track-art{
   position:absolute; inset:0;
-  background:
-    /* brillo rosa */
-    radial-gradient(800px 600px at 50% 10%, rgba(255,74,167,.35), transparent 55%),
-    radial-gradient(600px 500px at 60% 70%, rgba(255,139,208,.25), transparent 55%),
-
-    /* bordes de pista */
-    linear-gradient(90deg,
-      rgba(255,255,255,.06) 0%,
-      rgba(255,255,255,.06) 12%,
-      rgba(0,0,0,0) 12%,
-      rgba(0,0,0,0) 88%,
-      rgba(255,255,255,.06) 88%,
-      rgba(255,255,255,.06) 100%
-    ),
-
-    /* línea discontinua central (movimiento) */
-    repeating-linear-gradient(
-      180deg,
-      rgba(255,255,255,.45) 0 18px,
-      rgba(255,255,255,0) 18px 42px
-    ),
-
-    /* “curvas” con gradientes radiales (sensación de circuito) */
-    radial-gradient(220px 180px at 40% 22%, rgba(255,74,167,.18), transparent 70%),
-    radial-gradient(260px 200px at 65% 45%, rgba(255,139,208,.16), transparent 72%),
-    radial-gradient(240px 190px at 35% 70%, rgba(255,74,167,.14), transparent 72%),
-
-    /* asfalto */
-    linear-gradient(180deg, #10121a, #0b0c12);
-
-  background-size:
-    auto, auto,
-    auto,
-    100% 1200px,
-    auto, auto, auto,
-    auto;
-
-  background-position:
-    center, center,
-    center,
-    center 0px,
-    center, center, center,
-    center;
-
-  filter: saturate(1.05);
-  animation: dash 2.6s linear infinite;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='1200' viewBox='0 0 220 1200'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='0' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%230b0c12'/%3E%3Cstop offset='1' stop-color='%2310141f'/%3E%3C/linearGradient%3E%3ClinearGradient id='p' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23ff4aa7' stop-opacity='.18'/%3E%3Cstop offset='1' stop-color='%23ff8bd0' stop-opacity='.10'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='220' height='1200' fill='url(%23g)'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='url(%23p)' stroke-width='34' stroke-linecap='round'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='%23ffffff' stroke-opacity='.08' stroke-width='40' stroke-linecap='round'/%3E%3Cpath d='M160 20 C40 140 210 240 70 360 C-10 430 200 520 90 620 C-5 705 210 800 70 930 C10 1020 160 1100 120 1180' fill='none' stroke='%23ff4aa7' stroke-opacity='.25' stroke-width='6' stroke-dasharray='14 18'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position:center;
 }
 
-/* mueve solo la línea discontinua (4ª capa) */
-@keyframes dash{
-  0%{ background-position:
-    center, center,
-    center,
-    center 0px,
-    center, center, center,
-    center;
-  }
-  100%{ background-position:
-    center, center,
-    center,
-    center 1200px,
-    center, center, center,
-    center;
-  }
-}
-
-/* etiqueta */
 .track-label{
   position:absolute;
   bottom:18px;
@@ -345,11 +269,51 @@ input:focus{
   border:1px solid rgba(255,74,167,.35);
 }
 
-/* responsive simple */
+/* ---------------- Modal (zoom real) ---------------- */
+
+.modal{
+  position:fixed; inset:0;
+  display:none;
+  z-index:1000;
+}
+.modal.open{display:block;}
+
+.modal-backdrop{
+  position:absolute; inset:0;
+  background: rgba(10,10,14,.55);
+}
+
+.modal-panel{
+  position:absolute;
+  inset: 24px 24px 24px 24px;
+  background: #fff;
+  border-radius: 22px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.25);
+  border:1px solid var(--line);
+  padding: 18px;
+}
+
+.modal-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.modal-title{
+  font-weight:950;
+  letter-spacing:.4px;
+  font-size: 24px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Responsive */
 @media (max-width: 1100px){
   .presenter{grid-template-columns:1fr}
   .track{display:none}
   .presenter-grid{grid-template-columns: 1fr}
-  .card-qr .qrBox{width:100%}
-  .cloud{height:240px}
+  .title{white-space:normal;} /* en móvil sí puede partir */
+  h2{white-space:normal;}
 }
