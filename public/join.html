@@ -24,7 +24,9 @@
     <main class="grid">
       <section class="card">
         <h2>¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?</h2>
-        <p id="q1Help">Añade una o varias tareas (texto libre). La IA agrupará variantes similares.</p>
+        <p id="q1Help">
+          Añade una o varias tareas (texto libre). Si te equivocas, puedes borrar una tarea antes de enviar pulsando la <strong>×</strong>.
+        </p>
 
         <div class="row">
           <input
@@ -38,8 +40,8 @@
             aria-describedby="q1Help"
             placeholder="Ej: responder correos, preparar informes, reuniones..."
           />
-          <button id="q1Add" class="btn ghost" type="button">Añadir</button>
-          <button id="q1Send" class="btn" type="button">Enviar</button>
+          <button id="q1Add" class="btn ghost" type="button" aria-label="Añadir tarea">Añadir</button>
+          <button id="q1Send" class="btn" type="button" aria-label="Enviar tareas">Enviar</button>
         </div>
 
         <div id="q1Chips" class="chips" aria-live="polite"></div>
@@ -61,7 +63,7 @@
             aria-describedby="q2Help"
             placeholder="Ej: seguimiento de incidencias..."
           />
-          <button id="q2Send" class="btn" type="button">Enviar</button>
+          <button id="q2Send" class="btn" type="button" aria-label="Enviar respuesta">Enviar</button>
         </div>
       </section>
     </main>
