@@ -3,7 +3,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { pipeline } from "@xenova/transformers";
 import QRCode from "qrcode";
 import fs from "fs/promises";
 import fsSync from "fs";
@@ -13,9 +12,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.set("trust proxy", 1);
-app.use(express.json());
+app.use(express.json({ limit: "256kb" }));
 
-// ✅ RUTAS primero (evita conflictos con estáticos)
+// ==============================
+// RUTAS
+// ==============================
 app.get("/", (_req, res) => res.redirect("/join"));
 
 app.get("/join", (_req, res) => {
@@ -26,10 +27,10 @@ app.get("/presenter", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "presenter.html"));
 });
 
-// ✅ Healthcheck (útil en Render)
+// Healthcheck (útil en Render)
 app.get("/health", (_req, res) => res.status(200).send("ok"));
 
-// ✅ QR server-side (sin CDN)
+// QR server-side (sin CDN)
 app.get("/qr", async (req, res) => {
   try {
     const u = String(req.query.u || "");
@@ -51,35 +52,29 @@ app.get("/qr", async (req, res) => {
   }
 });
 
-// ✅ Estáticos después
-app.use(express.static(path.join(__dirname, "public")));
+// Estáticos
+app.use(express.static(path.join(__dirname, "public"), { maxAge: "1h" }));
 
 const httpServer = createServer(app);
 
-// ✅ Ajustes keep-alive (Render/proxies)
+// Ajustes keep-alive (proxies tipo Render)
 httpServer.keepAliveTimeout = 65_000;
 httpServer.headersTimeout = 66_000;
 
-// =========================
-// Socket.IO (más estable)
-// =========================
+// ==============================
+// SOCKET.IO (más estable)
+// ==============================
 const io = new Server(httpServer, {
   transports: ["websocket", "polling"],
   cors: { origin: true, methods: ["GET", "POST"] },
-
-  // engine.io ping settings (reduce desconexiones por micro-freezes)
   pingInterval: 25_000,
-  pingTimeout: 25_000,
-
-  // evita payloads gigantes
+  pingTimeout: 30_000,
   maxHttpBufferSize: 1e6,
 });
 
-// =======================================================
-// ✅ PERSISTENCIA (mejora “desaparece” si hay reinicio suave)
-// OJO: si Render reinicia contenedor, el FS puede ser efímero.
-// Aun así ayuda para caídas/restarts no destructivos.
-// =======================================================
+// ==============================
+// PERSISTENCIA (best-effort)
+// ==============================
 const STATE_FILE = path.join(__dirname, "state.json");
 let saveTimer = null;
 
@@ -102,6 +97,10 @@ async function saveState() {
       count,
       label: state.q2Label.get(k) || k,
     })),
+    meta: {
+      version: stateVersion,
+      ts: Date.now(),
+    },
   };
   await fs.writeFile(STATE_FILE, JSON.stringify(payload, null, 2), "utf8");
 }
@@ -130,23 +129,25 @@ async function loadState() {
       state.q2Label.set(row.k, String(row.label || row.k));
     }
 
+    // Recupera versión si existe
+    const v = Number(data?.meta?.version || 0);
+    if (Number.isFinite(v) && v > 0) stateVersion = v;
+
     console.log("✅ Estado cargado desde state.json");
   } catch (e) {
     console.error("loadState error:", e);
   }
 }
 
-// =======================================================
-// ===== ESTADO DE LA APP =====
-// - q1/q2 guardan CLAVE CANÓNICA -> count
-// - q1Label/q2Label guardan el TEXTO del primer usuario (lo que se muestra)
-// =======================================================
+// ==============================
+// ESTADO
+// ==============================
 const state = {
-  q1: new Map(),
-  q2: new Map(),
-  q1Label: new Map(),
+  q1: new Map(),          // canonKey -> count
+  q2: new Map(),          // canonKey -> count
+  q1Label: new Map(),     // canonKey -> primer texto humano
   q2Label: new Map(),
-  canonEmbeddings: new Map(), // opcional
+  canonEmbeddings: new Map(), // solo si USE_EMBEDDINGS=1
 };
 
 let stateVersion = 0;
@@ -157,7 +158,14 @@ function resetAll() {
   state.q1Label.clear();
   state.q2Label.clear();
   state.canonEmbeddings.clear();
+  bumpVersion("admin-reset");
   scheduleSave();
+}
+
+function bumpVersion(reason) {
+  stateVersion += 1;
+  // guardamos razón solo en logs (no persistimos como “verdad”)
+  console.log("🧾 stateVersion:", stateVersion, "reason:", reason);
 }
 
 function mapToArray(map, labelMap) {
@@ -169,9 +177,8 @@ function mapToArray(map, labelMap) {
     .sort((a, b) => b.count - a.count);
 }
 
-function emitState(metaExtra = {}) {
-  stateVersion += 1;
-  const payload = {
+function getStatePayload(metaExtra = {}) {
+  return {
     meta: {
       version: stateVersion,
       ts: Date.now(),
@@ -180,50 +187,36 @@ function emitState(metaExtra = {}) {
     q1: mapToArray(state.q1, state.q1Label),
     q2: mapToArray(state.q2, state.q2Label),
   };
-  io.emit("state:update", payload);
 }
 
-// =======================================================
-// ===== NORMALIZACIÓN + REGLAS (AGRUPACIÓN REAL) =====
-// Prioridad: estabilidad + agrupación fiable.
-// =======================================================
+function emitState(metaExtra = {}) {
+  io.emit("state:update", getStatePayload(metaExtra));
+}
+
+// ==============================
+// NORMALIZACIÓN + AGRUPACIÓN
+// ==============================
 const STOP = new Set([
-  // conectores / pronombres
   "de","la","el","los","las","un","una","y","o","a","en","para","por","con",
   "del","al","que","me","mi","mis","tu","tus","su","sus",
-
-  // verbos muy comunes (nos quedamos con el concepto)
   "hacer","realizar","tener","gestionar","llevar",
   "responder","contestar","redactar","escribir","enviar","leer","revisar",
   "preparar","crear","rellenar","completar","tramitar","procesar","organizar",
   "coordinar","planificar","agendar","programar","buscar","actualizar",
   "solucionar","resolver","atender","seguir","seguimiento",
-  "pasar","sacar","generar","montar","armar","revisar","validar","definir"
+  "pasar","sacar","generar","montar","armar","validar","definir",
 ]);
 
-// Sustituciones “claras”
 const SYN = [
-  // emails/correos
   { re: /\b(e-?mails?|emails?|mail(?:es)?|correo(?:s)?|correos? electronicos?)\b/g, to: "correo" },
   { re: /\b(outlook)\b/g, to: "correo" },
-
-  // reuniones
   { re: /\b(reuniones?)\b/g, to: "reunion" },
-
-  // informes/reportes
   { re: /\b(informes?|reportes?)\b/g, to: "informe" },
-
-  // actas/minutas
   { re: /\b(actas?|minutas?)\b/g, to: "acta" },
-
-  // propuestas / ofertas / presupuestos / cotizaciones
   { re: /\b(propuestas?|ofertas?|presupuestos?|cotizaciones?)\b/g, to: "propuesta" },
-
-  // requisitos
   { re: /\b(requisitos?)\b/g, to: "requisito" },
-
-  // técnico(s)
   { re: /\b(tecnicos?|tecnicas?)\b/g, to: "tecnico" },
+  { re: /\b(resumen(?:es)?)\b/g, to: "resumen" },
 ];
 
 function normalizeBase(input) {
@@ -246,60 +239,74 @@ function tokensFrom(input) {
   if (!base) return [];
   let tokens = base.split(" ").filter(Boolean).map(singularizeToken);
   tokens = tokens.filter((t) => t && !STOP.has(t));
-  return tokens;
+  // uniq manteniendo orden
+  const out = [];
+  const seen = new Set();
+  for (const t of tokens) {
+    if (!seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  }
+  return out;
 }
 
-// 👉 Reglas de agrupación (las “familias” que nos has pedido)
+// Reglas “familias” (las que nos pediste)
 function ruleCanonical(tokens) {
   const set = new Set(tokens);
 
-  // 1) Correos / email
   if (set.has("correo")) return "correo";
 
-  // 2) Actas / resúmenes de reuniones
-  // acta reunion, resumen reunion, informe reunion...
+  // actas/resúmenes de reuniones
   if (set.has("reunion") && (set.has("acta") || set.has("resumen") || set.has("informe"))) {
     return "acta reunion";
   }
 
-  // 3) Propuestas comerciales
-  // “informe comercial”, “propuesta comercial”, “redactar oferta comercial”...
+  // propuestas comerciales
   const isCommercial = set.has("comercial") || set.has("venta") || set.has("ventas");
   if (isCommercial && (set.has("propuesta") || set.has("informe"))) {
     return "propuesta comercial";
   }
 
-  // 4) Requisitos técnicos
+  // requisitos técnicos
   if (set.has("requisito") && set.has("tecnico")) return "requisitos tecnicos";
 
-  // 5) Informes (genérico)
+  // informes genérico
   if (set.has("informe")) return "informe";
-
-  // Fallback: devolvemos tokens unidos (concepto)
-  if (tokens.length) return tokens.join(" ");
 
   return null;
 }
 
-// =======================================================
-// ===== IA LOCAL (embeddings) - opcional =====
-// (por defecto OFF para no romper estabilidad en Render)
-// =======================================================
-const USE_EMBEDDINGS = String(process.env.USE_EMBEDDINGS || "") === "1";
-
-function cosine(a, b) {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-12);
+// Fuzzy matching ligero: agrupa conceptos nuevos con existentes por similitud de tokens
+function jaccard(a, b) {
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter += 1;
+  const union = a.size + b.size - inter;
+  return union ? inter / union : 0;
 }
 
+function existingCanonKeys() {
+  return new Set([
+    ...state.q1.keys(),
+    ...state.q2.keys(),
+  ]);
+}
+
+function tokenSetFromCanonKey(k) {
+  const parts = String(k || "").split(" ").filter(Boolean);
+  return new Set(parts);
+}
+
+// ==============================
+// EMBEDDINGS (IA semántica opcional)
+// ==============================
+const USE_EMBEDDINGS = String(process.env.USE_EMBEDDINGS || "") === "1";
 let embedderPromise = null;
+
 async function getEmbedder() {
+  // Import dinámico: si NO usas embeddings, esto nunca se carga (más estable en Render)
   if (!embedderPromise) {
+    const { pipeline } = await import("@xenova/transformers");
     embedderPromise = pipeline(
       "feature-extraction",
       "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
@@ -316,6 +323,16 @@ function withTimeout(promise, ms) {
   ]);
 }
 
+function cosine(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-12);
+}
+
 async function embed(text) {
   const embedder = await getEmbedder();
   const out = await embedder(text, { pooling: "mean", normalize: true });
@@ -330,19 +347,43 @@ async function embedSafe(text, ms = 900) {
   }
 }
 
-async function canonicalize(userText, threshold = 0.76) {
+async function canonicalize(userText) {
   const toks = tokensFrom(userText);
   if (!toks.length) return null;
 
-  // 1) reglas deterministas (rápidas y fiables)
-  const ruleKey = ruleCanonical(toks);
-  if (ruleKey) return ruleKey;
+  // 1) reglas deterministas
+  const rk = ruleCanonical(toks);
+  if (rk) return rk;
 
-  // 2) sin embeddings: devolvemos concepto tokens
+  // 2) concepto base (tokens)
   const concept = toks.join(" ").trim();
+  if (!concept) return null;
+
+  // 3) fuzzy ligero contra claves existentes (mejora agrupación “sin IA pesada”)
+  const keys = existingCanonKeys();
+  if (keys.size > 0) {
+    const newSet = new Set(toks);
+    let best = null;
+    let bestScore = 0;
+
+    for (const k of keys) {
+      const kSet = tokenSetFromCanonKey(k);
+      const score = jaccard(newSet, kSet);
+      if (score > bestScore) {
+        bestScore = score;
+        best = k;
+      }
+    }
+
+    // umbral razonable: si comparte bastante “núcleo”, agrupamos
+    if (best && bestScore >= 0.66) {
+      return best;
+    }
+  }
+
+  // 4) embeddings opcionales (IA semántica)
   if (!USE_EMBEDDINGS) return concept;
 
-  // 3) embeddings opcionales (más “IA” pero más riesgo de freeze)
   if (state.canonEmbeddings.has(concept)) return concept;
 
   const v = await embedSafe(concept, 900);
@@ -360,15 +401,15 @@ async function canonicalize(userText, threshold = 0.76) {
     }
   }
 
-  if (bestCanon && bestScore >= threshold) return bestCanon;
+  if (bestCanon && bestScore >= 0.76) return bestCanon;
 
   state.canonEmbeddings.set(concept, v);
   return concept;
 }
 
-// =======================================================
-// ===== HELPERS: parse payloads robustos =====
-// =======================================================
+// ==============================
+// HELPERS payload
+// ==============================
 function toStringSafe(x) {
   if (typeof x === "string") return x;
   if (x == null) return "";
@@ -383,9 +424,9 @@ function extractItems(payload) {
   return [];
 }
 
-// =======================================================
-// ===== PROCESADO (ACK inmediato para no dar “Error envío”) =====
-// =======================================================
+// ==============================
+// PROCESADO (ACK inmediato)
+// ==============================
 async function processQ1(items) {
   let changed = false;
 
@@ -402,7 +443,8 @@ async function processQ1(items) {
   }
 
   if (changed) {
-    emitState();
+    bumpVersion("q1");
+    emitState({ reason: "q1-update" });
     scheduleSave();
   }
 }
@@ -417,13 +459,14 @@ async function processQ2(item) {
   if (!state.q2Label.has(canonKey)) state.q2Label.set(canonKey, clean);
   state.q2.set(canonKey, (state.q2.get(canonKey) || 0) + 1);
 
-  emitState();
+  bumpVersion("q2");
+  emitState({ reason: "q2-update" });
   scheduleSave();
 }
 
-// =======================================================
-// ===== SOCKETS =====
-// =======================================================
+// ==============================
+// SOCKETS
+// ==============================
 io.on("connection", (socket) => {
   console.log("🟢 socket conectado:", socket.id);
 
@@ -431,16 +474,17 @@ io.on("connection", (socket) => {
     console.log("🔴 socket desconectado:", socket.id, reason);
   });
 
-  // estado inicial (incluye meta.version)
-  emitState({ reason: "initial-connection", to: socket.id });
-  // 👆 emitState emite a todos; si prefieres solo a ese socket:
-  // socket.emit("state:update", { meta:{version:stateVersion,ts:Date.now()}, q1:..., q2:... });
+  // ✅ IMPORTANTE: estado inicial SOLO al socket que entra (NO broadcast)
+  socket.emit("state:update", getStatePayload({ reason: "initial-connection" }));
 
-  // RESET (ACK inmediato + emit vacío)
+  // Cliente puede pedir estado al reconectar
+  socket.on("state:request", () => {
+    socket.emit("state:update", getStatePayload({ reason: "client-request" }));
+  });
+
+  // RESET (ACK inmediato + broadcast vacío)
   socket.on("admin:reset", (ack) => {
-    try {
-      if (typeof ack === "function") ack({ ok: true });
-    } catch {}
+    try { if (typeof ack === "function") ack({ ok: true }); } catch {}
     resetAll();
     emitState({ reason: "admin-reset" });
   });
@@ -448,14 +492,23 @@ io.on("connection", (socket) => {
   const q1Handlers = ["q1:submit", "q1:send", "q1:answers", "q1"];
   const q2Handlers = ["q2:submit", "q2:send", "q2:answer", "q2"];
 
+  // Anti-flood simple por socket (30 personas ok)
+  let bucket = 0;
+  const refill = setInterval(() => { bucket = 0; }, 2500);
+  socket.on("disconnect", () => clearInterval(refill));
+
   for (const ev of q1Handlers) {
     socket.on(ev, (payload, ack) => {
+      if (bucket > 25) {
+        try { if (typeof ack === "function") ack({ ok: false, reason: "rate-limit" }); } catch {}
+        return;
+      }
+      bucket += 1;
+
       const items = extractItems(payload).map((x) => toStringSafe(x).trim()).filter(Boolean);
 
-      // ✅ ACK inmediato (evita timeouts del cliente)
-      try {
-        if (typeof ack === "function") ack({ ok: true, accepted: items.length });
-      } catch {}
+      // ACK inmediato
+      try { if (typeof ack === "function") ack({ ok: true, accepted: items.length }); } catch {}
 
       if (!items.length) return;
       processQ1(items).catch((e) => console.error("processQ1 error:", e));
@@ -464,12 +517,16 @@ io.on("connection", (socket) => {
 
   for (const ev of q2Handlers) {
     socket.on(ev, (payload, ack) => {
+      if (bucket > 25) {
+        try { if (typeof ack === "function") ack({ ok: false, reason: "rate-limit" }); } catch {}
+        return;
+      }
+      bucket += 1;
+
       const items = extractItems(payload);
       const raw = toStringSafe(items[0] || "").trim();
 
-      try {
-        if (typeof ack === "function") ack({ ok: true, accepted: raw ? 1 : 0 });
-      } catch {}
+      try { if (typeof ack === "function") ack({ ok: true, accepted: raw ? 1 : 0 }); } catch {}
 
       if (!raw) return;
       processQ2(raw).catch((e) => console.error("processQ2 error:", e));
@@ -477,14 +534,13 @@ io.on("connection", (socket) => {
   }
 });
 
-// =======================================================
-// ✅ ARRANQUE
-// =======================================================
+// ==============================
+// ARRANQUE
+// ==============================
 process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
 process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
 
 await loadState();
 
-// Render expone PORT en env
 const PORT = Number(process.env.PORT || 3000);
 httpServer.listen(PORT, () => console.log("Servidor activo en puerto", PORT));
