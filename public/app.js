@@ -59,17 +59,17 @@ document.addEventListener("DOMContentLoaded", () => {
       span.className = "cloud-word";
       span.textContent = String(text || "").toUpperCase();
 
-      // Tamaño proporcional
+      // Tamaño proporcional (cuanto más repetida, más grande)
       const size = 16 + (Number(count || 0) / max) * 48;
       span.style.fontSize = `${size}px`;
 
       // ✅ Estética: rosa NUNSYS + menos “mazo” que negro/bold
       span.style.color = "var(--pink)";
-      span.style.fontWeight = "700";
+      span.style.fontWeight = "650";
       span.style.fontFamily =
         "ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
 
-      // ✅ Un poco más “pro” para los top
+      // ✅ Top visual un poquito más destacado
       if (idx === 0) {
         span.style.background = "rgba(255,74,167,.14)";
         span.style.borderColor = "rgba(255,74,167,.38)";
@@ -136,7 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (q1Input) q1Input.value = "";
     }
 
-    function emitWithOptimisticAck(eventName, payload, btn, onSuccess) {
+    function emitOptimistic(eventName, payload, btn, onSuccess) {
       // Si no hay conexión, lo dejamos claro
       if (!socket.connected) {
         console.log(`❌ No conectado: no se puede enviar ${eventName}`);
@@ -146,24 +146,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
       let done = false;
 
-      // ✅ IMPORTANTÍSIMO:
-      // aunque el servidor procese, a veces el ACK no vuelve => NO lo tratamos como error duro.
+      // ✅ IMPORTANTE:
+      // Aunque el server ya responde ACK inmediato, si algo raro ocurre en móvil/red,
+      // NO queremos falsos “Error envío”. Si no vuelve callback rápido, asumimos OK.
       const optimisticTimer = setTimeout(() => {
         if (done) return;
         done = true;
         console.log(`⚠️ ACK tardío/no devuelto en ${eventName} → asumimos enviado`);
         flashBtn(btn, "Enviado ✓");
         onSuccess?.();
-      }, 1200);
+      }, 900);
 
-      // Emit con callback (ACK si el server lo soporta)
       try {
         socket.emit(eventName, payload, (res) => {
           if (done) return;
           done = true;
           clearTimeout(optimisticTimer);
 
-          // Si res viene con ok:false, lo respetamos
           if (res && res.ok === false) {
             console.log(`❌ Server respondió ok:false en ${eventName}:`, res);
             flashBtn(btn, "Error envío");
@@ -176,7 +175,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       } catch (e) {
         console.log(`⚠️ Emit error en ${eventName}:`, e);
-        // Aún así, mejor UX: no dejamos la UI “atascada”
         clearTimeout(optimisticTimer);
         flashBtn(btn, "Enviado ✓");
         onSuccess?.();
@@ -214,23 +212,23 @@ document.addEventListener("DOMContentLoaded", () => {
       if (q1Items.length === 0) return;
 
       sendingQ1 = true;
-      q1Send.disabled = true;
+      if (q1Send) q1Send.disabled = true;
 
       const payload = { items: [...q1Items] };
 
-      emitWithOptimisticAck("q1:submit", payload, q1Send, () => {
+      emitOptimistic("q1:submit", payload, q1Send, () => {
         // ✅ UX: al enviar, desaparecen los chips (como querías)
         clearQ1UI();
 
         sendingQ1 = false;
-        q1Send.disabled = false;
+        if (q1Send) q1Send.disabled = false;
       });
 
       // seguridad extra por si algo rarísimo bloquea
       setTimeout(() => {
         sendingQ1 = false;
         if (q1Send) q1Send.disabled = false;
-      }, 2500);
+      }, 2000);
     });
 
     // ENVIAR Q2
@@ -241,22 +239,22 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!v) return;
 
       sendingQ2 = true;
-      q2Send.disabled = true;
+      if (q2Send) q2Send.disabled = true;
 
       const payload = { item: v };
 
-      emitWithOptimisticAck("q2:submit", payload, q2Send, () => {
+      emitOptimistic("q2:submit", payload, q2Send, () => {
         // ✅ UX: al enviar, limpiamos input
         if (q2Input) q2Input.value = "";
 
         sendingQ2 = false;
-        q2Send.disabled = false;
+        if (q2Send) q2Send.disabled = false;
       });
 
       setTimeout(() => {
         sendingQ2 = false;
         if (q2Send) q2Send.disabled = false;
-      }, 2500);
+      }, 2000);
     });
   }
 
@@ -279,19 +277,21 @@ document.addEventListener("DOMContentLoaded", () => {
     let lastState =
       safeJsonParse(localStorage.getItem(LS_KEY), null) || { q1: [], q2: [] };
 
-    // Para evitar “borrado fantasma” cuando llega estado vacío por reconexión/sleep
+    // Para evitar “borrado fantasma”
     let resetRequestedAt = 0;
+
+    function currentTitle() {
+      return current === "q1"
+        ? "¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?"
+        : "¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?";
+    }
 
     function refresh() {
       const data = lastState[current] || [];
       renderCloud(cloudBox, data);
       renderCloud(modalCloud, data);
 
-      const title =
-        current === "q1"
-          ? "¿QUÉ TAREAS TE CONSUMEN MÁS TIEMPO?"
-          : "¿CUÁL ES LA TAREA QUE MENOS TE GUSTA REALIZAR?";
-
+      const title = currentTitle();
       if (cloudTitle) cloudTitle.textContent = title;
       if (modalTitle) modalTitle.textContent = title;
     }
@@ -306,10 +306,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const incomingEmpty = isEmptyState(incoming);
       const weHaveData = hasAnyData(lastState);
 
-      // ✅ Si llega vacío “de golpe” y tú NO has hecho reset, y además hubo desconexión reciente,
-      // NO borramos la nube: mantenemos lo último conocido (evita el “se borra sola”).
+      // ✅ Si llega vacío “de golpe” y NO has hecho reset,
+      // y además hubo desconexión reciente, NO borramos.
       const recentlyDisconnected = Date.now() - lastDisconnectAt < 15000;
-      const recentlyReset = Date.now() - resetRequestedAt < 6000;
+      const recentlyReset = Date.now() - resetRequestedAt < 8000;
 
       if (incomingEmpty && weHaveData && !recentlyReset && recentlyDisconnected) {
         console.log(
@@ -335,21 +335,20 @@ document.addEventListener("DOMContentLoaded", () => {
       refresh();
     });
 
-    // RESET con ACK (y marcamos “permitir vacío”)
+    // RESET con “permitir vacío”
     document.getElementById("resetBtn")?.addEventListener("click", () => {
       const btn = document.getElementById("resetBtn");
       if (!socket.connected) return;
 
       resetRequestedAt = Date.now();
 
-      // si el server no devuelve ack, NO rompemos UX
       let done = false;
       const optimisticTimer = setTimeout(() => {
         if (done) return;
         done = true;
         if (btn) btn.textContent = "RESET ✓";
         setTimeout(() => btn && (btn.textContent = "RESET"), 900);
-      }, 1200);
+      }, 900);
 
       socket.emit("admin:reset", (res) => {
         if (done) return;
@@ -362,7 +361,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    // ✅ ZOOM: abrir/cerrar modal (esto faltaba en tu app.js actual)
+    // ✅ ZOOM: abrir/cerrar modal (robusto)
     function openZoom() {
       if (!zoomModal) return;
       zoomModal.classList.add("open");
@@ -378,6 +377,11 @@ document.addEventListener("DOMContentLoaded", () => {
     zoomBtn?.addEventListener("click", () => openZoom());
     modalClose?.addEventListener("click", () => closeZoom());
     modalX?.addEventListener("click", () => closeZoom());
+
+    // Cerrar al clicar fuera del panel (backdrop)
+    zoomModal?.addEventListener("click", (e) => {
+      if (e.target === zoomModal) closeZoom();
+    });
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeZoom();
